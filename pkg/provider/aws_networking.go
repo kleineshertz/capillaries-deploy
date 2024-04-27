@@ -51,16 +51,45 @@ func ensureAwsVpc(p *AwsDeployProvider) (l.LogMsg, error) {
 func ensureAwsPrivateSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
 
-	newId, err := cldaws.EnsureSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
+	subnetDef := p.GetCtx().PrjPair.Live.Network.PrivateSubnet
+
+	// Check if the subnet is already there
+	foundSubnetIdByName, err := cldaws.GetSubnetIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, subnetDef.Name)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	if subnetDef.Id == "" {
+		// If it was already created, but was not written to the prj file, save it for future use, but do not create
+		if foundSubnetIdByName != "" {
+			lb.Add(fmt.Sprintf("private subnet %s already there, updating project with new id %s", subnetDef.Name, foundSubnetIdByName))
+			p.GetCtx().PrjPair.SetPrivateSubnetId(foundSubnetIdByName)
+			return lb.Complete(nil)
+		}
+	} else {
+		if foundSubnetIdByName == "" {
+			// It was supposed to be there, but it's not present, complain
+			return "", fmt.Errorf("requested private subnet id %s not present, consider removing this id from the project file", subnetDef.Id)
+		} else if foundSubnetIdByName != subnetDef.Id {
+			// It is already there, but has different id, complain
+			return "", fmt.Errorf("requested private subnet id %s not matching existing id %s", subnetDef.Id, foundSubnetIdByName)
+		}
+	}
+
+	// Existing id matches the found id, nothing to do
+	if subnetDef.Id != "" {
+		lb.Add(fmt.Sprintf("private subnet %s(%s) already there, no need to create", subnetDef.Name, foundSubnetIdByName))
+		return lb.Complete(nil)
+	}
+
+	newId, err := cldaws.CreateSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
 		p.GetCtx().PrjPair.Live.Network.Id,
-		p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Name,
-		p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Cidr,
-		p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id,
-		p.GetCtx().PrjPair.Live.Network.PrivateSubnet.AvailabilityZone)
+		subnetDef.Name,
+		subnetDef.Cidr,
+		subnetDef.AvailabilityZone)
 	if err != nil {
 		return lb.Complete(fmt.Errorf("cannot create private subnet: %s", err.Error()))
 	}
-
 	p.GetCtx().PrjPair.SetPrivateSubnetId(newId)
 
 	return lb.Complete(nil)
@@ -69,16 +98,45 @@ func ensureAwsPrivateSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
 func ensureAwsPublicSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
 
-	newId, err := cldaws.EnsureSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
+	subnetDef := p.GetCtx().PrjPair.Live.Network.PublicSubnet
+
+	// Check if the subnet is already there
+	foundSubnetIdByName, err := cldaws.GetSubnetIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, subnetDef.Name)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	if subnetDef.Id == "" {
+		// If it was already created, but was not written to the prj file, save it for future use, but do not create
+		if foundSubnetIdByName != "" {
+			lb.Add(fmt.Sprintf("public subnet %s already there, updating project with new id %s", subnetDef.Name, foundSubnetIdByName))
+			p.GetCtx().PrjPair.SetPublicSubnetId(foundSubnetIdByName)
+			return lb.Complete(nil)
+		}
+	} else {
+		if foundSubnetIdByName == "" {
+			// It was supposed to be there, but it's not present, complain
+			return "", fmt.Errorf("requested public subnet id %s not present, consider removing this id from the project file", subnetDef.Id)
+		} else if foundSubnetIdByName != subnetDef.Id {
+			// It is already there, but has different id, complain
+			return "", fmt.Errorf("requested public subnet id %s not matching existing id %s", subnetDef.Id, foundSubnetIdByName)
+		}
+	}
+
+	// Existing id matches the found id, nothing to do
+	if subnetDef.Id != "" {
+		lb.Add(fmt.Sprintf("public subnet %s(%s) already there, no need to create", subnetDef.Name, foundSubnetIdByName))
+		return lb.Complete(nil)
+	}
+
+	newId, err := cldaws.CreateSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
 		p.GetCtx().PrjPair.Live.Network.Id,
-		p.GetCtx().PrjPair.Live.Network.PublicSubnet.Name,
-		p.GetCtx().PrjPair.Live.Network.PublicSubnet.Cidr,
-		p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id,
-		p.GetCtx().PrjPair.Live.Network.PublicSubnet.AvailabilityZone)
+		subnetDef.Name,
+		subnetDef.Cidr,
+		subnetDef.AvailabilityZone)
 	if err != nil {
 		return lb.Complete(fmt.Errorf("cannot create public subnet: %s", err.Error()))
 	}
-
 	p.GetCtx().PrjPair.SetPublicSubnetId(newId)
 
 	return lb.Complete(nil)

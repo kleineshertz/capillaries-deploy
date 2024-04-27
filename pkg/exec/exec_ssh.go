@@ -1,44 +1,24 @@
-package deploy
+package exec
 
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/capillariesio/capideploy/xfer"
+	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"golang.org/x/crypto/ssh"
 )
 
-// func (sshClient *xfer.SshClient) RunCommand(cmd string) ExecResult {
-// 	// open connection
-// 	conn, err := ssh.Dial("tcp", sshClient.Server, sshClient.Config)
-// 	if err != nil {
-// 		return ExecResult{cmd, "", "", 0, fmt.Errorf("Dial to %v failed %v", sshClient.Server, err)}
-// 	}
-// 	defer conn.Close()
-
-// 	// open session
-// 	session, err := conn.NewSession()
-// 	if err != nil {
-// 		return ExecResult{cmd, "", "", 0, fmt.Errorf("Create session for %v failed %v", sshClient.Server, err)}
-// 	}
-// 	defer session.Close()
-
-// 	var stdout, stderr bytes.Buffer
-// 	session.Stdout = &stdout
-// 	session.Stderr = &stderr
-
-// 	runStartTime := time.Now()
-// 	err = session.Run(cmd)
-// 	elapsed := time.Since(runStartTime).Seconds()
-
-// 	return ExecResult{cmd, string(stdout.Bytes()), string(stderr.Bytes()), elapsed, err}
-// }
+type SshConfigDef struct {
+	ExternalIpAddress  string `json:"external_ip_address"`
+	Port               int    `json:"port"`
+	User               string `json:"user"`
+	PrivateKeyPath     string `json:"private_key_path"`
+	PrivateKeyPassword string `json:"private_key_password"`
+}
 
 type TunneledSshClient struct {
 	ProxySshClient  *ssh.Client
@@ -115,22 +95,34 @@ func NewTunneledSshClient(sshConfig *SshConfigDef, ipAddress string) (*TunneledS
 	return &tsc, nil
 }
 
-func ExecSsh(sshConfig *SshConfigDef, ipAddress string, cmd string) ExecResult {
+func ExecSsh(sshConfig *SshConfigDef, ipAddress string, cmd string, envVars map[string]string) ExecResult {
+	cmdBuilder := strings.Builder{}
+	for k, v := range envVars {
+		if strings.Contains(v, " ") {
+			cmdBuilder.WriteString(fmt.Sprintf("%s='%s'\n", k, v))
+		} else {
+			cmdBuilder.WriteString(fmt.Sprintf("%s=%s\n", k, v))
+		}
+	}
+	cmdBuilder.WriteString(cmd)
+
 	tsc, err := NewTunneledSshClient(sshConfig, ipAddress)
 	if err != nil {
-		return ExecResult{cmd, "", "", 0, err}
+		return ExecResult{cmdBuilder.String(), "", "", 0, err}
 	}
 	defer tsc.Close()
 
 	session, err := tsc.SshClient.NewSession()
 	if err != nil {
-		return ExecResult{cmd, "", "", 0, fmt.Errorf("cannot create session for %s: %s", ipAddress, err.Error())}
+		return ExecResult{cmdBuilder.String(), "", "", 0, fmt.Errorf("cannot create session for %s: %s", ipAddress, err.Error())}
 	}
 	defer session.Close()
 
 	var stdout, stderr bytes.Buffer
 	session.Stdout = &stdout
 	session.Stderr = &stderr
+
+	// TODO: it would be nice to have an execution timeout
 
 	runStartTime := time.Now()
 	err = session.Run(cmd)
@@ -140,6 +132,17 @@ func ExecSsh(sshConfig *SshConfigDef, ipAddress string, cmd string) ExecResult {
 	return er
 }
 
+func ExecCommandOnInstance(sshConfig *SshConfigDef, ipAddress string, cmd string, isVerbose bool) (l.LogMsg, error) {
+	lb := l.NewLogBuilder(fmt.Sprintf("ExecCommandOnInstance: %s - %s", ipAddress, cmd), isVerbose)
+	er := ExecSsh(sshConfig, ipAddress, cmd, map[string]string{})
+	lb.Add(er.ToString())
+	if er.Error != nil {
+		return lb.Complete(er.Error)
+	}
+	return lb.Complete(nil)
+}
+
+// Used for file transfer
 func ExecSshForClient(sshClient *ssh.Client, cmd string) (string, string, error) {
 	session, err := sshClient.NewSession()
 	if err != nil {
@@ -156,78 +159,12 @@ func ExecSshForClient(sshClient *ssh.Client, cmd string) (string, string, error)
 	return stdout.String(), stderr.String(), nil
 }
 
+// Used on volume attachment
 func ExecSshAndReturnLastLine(sshConfig *SshConfigDef, ipAddress string, cmd string) (string, ExecResult) {
-	er := ExecSsh(sshConfig, ipAddress, cmd)
+	er := ExecSsh(sshConfig, ipAddress, cmd, map[string]string{})
 	if er.Error != nil {
 		return "", er
 	}
-
 	lines := strings.Split(strings.Trim(er.Stdout, "\n "), "\n")
 	return strings.TrimSpace(lines[len(lines)-1]), er
-}
-
-
-func readScriptFile(fullScriptPath string) (string, error) {
-	f, err := os.Open(fullScriptPath)
-	if err != nil {
-		return "", fmt.Errorf("cannot open shell script %s: %s", fullScriptPath, err.Error())
-	}
-	defer f.Close()
-
-	shellScriptBytes, err := io.ReadAll(f)
-	if err != nil {
-		return "", fmt.Errorf("cannot read shell script %s: %s", fullScriptPath, err.Error())
-	}
-	return string(shellScriptBytes), nil
-}
-
-func ExecScriptsOnInstance(sshConfig *SshConfigDef, ipAddress string, env map[string]string, prjFileDirPath string, shellScriptFiles []string, isVerbose bool) (LogMsg, error) {
-	lb := NewLogBuilder(fmt.Sprintf("ExecScriptsOnInstance: %s on %s", shellScriptFiles, ipAddress), isVerbose)
-
-	if len(shellScriptFiles) == 0 {
-		lb.Add(fmt.Sprintf("no commands to execute on %s", ipAddress))
-		return lb.Complete(nil)
-	}
-
-	for _, shellScriptFile := range shellScriptFiles {
-		cmdBuilder := strings.Builder{}
-		for k, v := range env {
-			if strings.Contains(v, " ") {
-				cmdBuilder.WriteString(fmt.Sprintf("%s='%s'\n", k, v)) // Use quotes, there may be spaces in values
-			} else {
-				cmdBuilder.WriteString(fmt.Sprintf("%s=%s\n", k, v))
-			}
-		}
-
-		shellScriptString, err := readScriptFile(filepath.Join(prjFileDirPath, shellScriptFile))
-		if err != nil {
-			return lb.Complete(err)
-		}
-
-		cmdBuilder.WriteString(shellScriptString)
-
-		er := ExecSsh(sshConfig, ipAddress, cmdBuilder.String())
-		lb.Add(er.ToString())
-		if er.Error != nil {
-			return lb.Complete(er.Error)
-		}
-	}
-	return lb.Complete(nil)
-}
-
-func ExecCommandsOnInstance(sshConfig *SshConfigDef, ipAddress string, cmds []string, isVerbose bool) (LogMsg, error) {
-	lb := NewLogBuilder(fmt.Sprintf("ExecCommandsOnInstance: %d on %s", len(cmds), ipAddress), isVerbose)
-	if len(cmds) == 0 {
-		lb.Add(fmt.Sprintf("no commands to execute on %s", ipAddress))
-		return lb.Complete(nil)
-	}
-
-	for _, cmd := range cmds {
-		er := ExecSsh(sshConfig, ipAddress, cmd)
-		lb.Add(er.ToString())
-		if er.Error != nil {
-			return lb.Complete(er.Error)
-		}
-	}
-	return lb.Complete(nil)
 }

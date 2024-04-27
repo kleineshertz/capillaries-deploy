@@ -11,6 +11,9 @@ import (
 )
 
 func GetPublicIpAllocation(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, publicIp string) (string, error) {
+	if publicIp == "" {
+		return "", fmt.Errorf("empty parameter not allowed: publicIp (%s)", publicIp)
+	}
 	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{PublicIps: []string{publicIp}})
 	lb.AddObject(out)
 	if err != nil {
@@ -24,8 +27,11 @@ func GetPublicIpAllocation(client *ec2.Client, goCtx context.Context, lb *l.LogB
 }
 
 func GetPublicIpAssoiatedInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, publicIp string) (string, error) {
-	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{Filters: []types.Filter{types.Filter{
-		Name: aws.String("public-ip"), Values: []string{publicIp}}}})
+	if publicIp == "" {
+		return "", fmt.Errorf("empty parameter not allowed: publicIp (%s)", publicIp)
+	}
+	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{Filters: []types.Filter{
+		{Name: aws.String("public-ip"), Values: []string{publicIp}}}})
 	lb.AddObject(out)
 	if err != nil {
 		return "", fmt.Errorf("cannot check public IP instance id %s:%s", publicIp, err.Error())
@@ -39,6 +45,9 @@ func GetPublicIpAssoiatedInstance(client *ec2.Client, goCtx context.Context, lb 
 }
 
 func AllocateFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, publicIpDesc string) (string, error) {
+	if publicIpDesc == "" {
+		return "", fmt.Errorf("empty parameter not allowed: publicIpDesc (%s)", publicIpDesc)
+	}
 	out, err := client.AllocateAddress(goCtx, &ec2.AllocateAddressInput{TagSpecifications: []types.TagSpecification{{
 		ResourceType: types.ResourceTypeElasticIp,
 		Tags: []types.Tag{
@@ -51,22 +60,21 @@ func AllocateFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuil
 	return *out.PublicIp, nil
 }
 
-func ReleaseFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, publicIp string, publicIpDesc string) error {
+func ReleaseFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, publicIp string) error {
 	if publicIp == "" {
-		lb.Add(fmt.Sprintf("%s IP is already empty, nothing to delete", publicIpDesc))
-		return nil
+		return fmt.Errorf("empty parameter not allowed: publicIp (%s)", publicIp)
 	}
 
 	allocationId, err := GetPublicIpAllocation(client, goCtx, lb, publicIp)
 	if err != nil {
-		return fmt.Errorf("cannot find %s IP address %s to delete:%s", publicIpDesc, publicIp, err.Error())
+		return fmt.Errorf("cannot find IP address %s to delete:%s", publicIp, err.Error())
 	}
 
 	if allocationId != "" {
 		outDel, err := client.ReleaseAddress(goCtx, &ec2.ReleaseAddressInput{AllocationId: aws.String(allocationId)})
 		lb.AddObject(outDel)
 		if err != nil {
-			return fmt.Errorf("cannot release %s IP address %s to delete:%s", publicIpDesc, publicIp, err.Error())
+			return fmt.Errorf("cannot release IP address %s to delete:%s", publicIp, err.Error())
 		}
 	}
 	return nil

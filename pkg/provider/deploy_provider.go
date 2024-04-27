@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
+	"github.com/capillariesio/capillaries-deploy/pkg/sh"
 )
 
 type AwsCtx struct {
@@ -23,20 +24,21 @@ type DeployCtx struct {
 }
 type DeployProvider interface {
 	GetCtx() *DeployCtx
-	CreateFloatingIp() (l.LogMsg, error)
+	BuildArtifacts() (l.LogMsg, error)
+	CreateFloatingIps() (l.LogMsg, error)
 	DeleteFloatingIps() (l.LogMsg, error)
 	CreateSecurityGroups() (l.LogMsg, error)
 	DeleteSecurityGroups() (l.LogMsg, error)
 	CreateNetworking() (l.LogMsg, error)
 	DeleteNetworking() (l.LogMsg, error)
-	GetFlavorIds(flavorMap map[string]string) (l.LogMsg, error)
-	GetImageIds(imageMap map[string]string) (l.LogMsg, error)
+	HarvestInstanceTypesByFlavorNames(flavorMap map[string]string) (l.LogMsg, error)
+	HarvestImageIdsByImageNames(imageMap map[string]string) (l.LogMsg, error)
 	VerifyKeypairs(keypairMap map[string]struct{}) (l.LogMsg, error)
 	CreateInstanceAndWaitForCompletion(iNickname string, flavorId string, imageId string) (l.LogMsg, error)
 	DeleteInstance(iNickname string) (l.LogMsg, error)
-	CreateVolume(prjPair *ProjectPair, iNickname string, volNickname string, isVerbose bool) (LogMsg, error)
-	AttachVolume(prjPair *ProjectPair, iNickname string, volNickname string, isVerbose bool) (LogMsg, error)
-	DeleteVolume(prjPair *ProjectPair, iNickname string, volNickname string, isVerbose bool) (LogMsg, error)
+	CreateVolume(iNickname string, volNickname string) (l.LogMsg, error)
+	AttachVolume(iNickname string, volNickname string) (l.LogMsg, error)
+	DeleteVolume(iNickname string, volNickname string) (l.LogMsg, error)
 }
 
 type OpenstackDeployProvider struct{}
@@ -47,6 +49,19 @@ type AwsDeployProvider struct {
 
 func (p *AwsDeployProvider) GetCtx() *DeployCtx {
 	return p.Ctx
+}
+func (p *AwsDeployProvider) BuildArtifacts() (l.LogMsg, error) {
+	lb := l.NewLogBuilder("BuildArtifacts", p.GetCtx().IsVerbose)
+	for _, cmd := range p.GetCtx().PrjPair.Live.Artifacts.Cmd {
+		err := sh.ExecEmbeddedScriptLocally(lb, cmd, []string{},
+			p.GetCtx().PrjPair.Live.Artifacts.Env,
+			p.GetCtx().IsVerbose,
+			p.GetCtx().PrjPair.Live.Timeouts.LocalCommand)
+		if err != nil {
+			return lb.Complete(err)
+		}
+	}
+	return lb.Complete(nil)
 }
 
 func DeployProviderFactory(prjPair *prj.ProjectPair, goCtx context.Context, isVerbose bool) (DeployProvider, error) {

@@ -11,37 +11,38 @@ import (
 	"strings"
 	"time"
 
-	"github.com/capillariesio/capillaries-deploy/pkg/deploy"
+	"github.com/capillariesio/capillaries-deploy/pkg/exec"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
+	"github.com/capillariesio/capillaries-deploy/pkg/provider"
+	"github.com/capillariesio/capillaries-deploy/pkg/sh"
+	"github.com/capillariesio/capillaries-deploy/pkg/updown"
 )
 
 const (
-	CmdCreateFloatingIps    string = "create_floating_ips"
-	CmdDeleteFloatingIps    string = "delete_floating_ips"
-	CmdCreateSecurityGroups string = "create_security_groups"
-	CmdDeleteSecurityGroups string = "delete_security_groups"
-	CmdCreateNetworking     string = "create_networking"
-	CmdDeleteNetworking     string = "delete_networking"
-	CmdCreateVolumes        string = "create_volumes"
-	CmdDeleteVolumes        string = "delete_volumes"
-	CmdCreateInstances      string = "create_instances"
-	CmdDeleteInstances      string = "delete_instances"
-	CmdAttachVolumes        string = "attach_volumes"
-	CmdUploadFiles          string = "upload_files"
-	CmdUploadS3             string = "upload_s3"
-	CmdDownloadFiles        string = "download_files"
-	CmdInstallServices      string = "install_services"
-	CmdConfigServices       string = "config_services"
-	CmdStartServices        string = "start_services"
-	CmdStopServices         string = "stop_services"
-	CmdCreateInstanceUsers  string = "create_instance_users"
-	CmdCopyPrivateKeys      string = "copy_private_keys"
-	CmdPingInstances        string = "ping_instances"
-	CmdBuildArtifacts       string = "build_artifacts"
+	CmdCreateFloatingIps      string = "create_floating_ips"
+	CmdDeleteFloatingIps      string = "delete_floating_ips"
+	CmdCreateSecurityGroups   string = "create_security_groups"
+	CmdDeleteSecurityGroups   string = "delete_security_groups"
+	CmdCreateNetworking       string = "create_networking"
+	CmdDeleteNetworking       string = "delete_networking"
+	CmdCreateVolumes          string = "create_volumes"
+	CmdDeleteVolumes          string = "delete_volumes"
+	CmdCreateInstances        string = "create_instances"
+	CmdDeleteInstances        string = "delete_instances"
+	CmdAttachVolumes          string = "attach_volumes"
+	CmdUploadFiles            string = "upload_files"
+	CmdDownloadFiles          string = "download_files"
+	CmdInstallServices        string = "install_services"
+	CmdConfigServices         string = "config_services"
+	CmdStartServices          string = "start_services"
+	CmdStopServices           string = "stop_services"
+	CmdPingInstances          string = "ping_instances"
+	CmdBuildArtifacts         string = "build_artifacts"
+	CmdConfigCassandraCluster string = "config_cassandra_cluster"
 )
 
-type SingleThreadCmdHandler func(*prj.ProjectPair, bool) (l.LogMsg, error)
+type SingleThreadCmdHandler func() (l.LogMsg, error)
 
 func DumpLogChan(logChan chan l.LogMsg) {
 	for len(logChan) > 0 {
@@ -60,7 +61,7 @@ func getNicknamesArg(entityName string) (string, error) {
 	return os.Args[2], nil
 }
 
-func filterByNickname[GenericDef deploy.FileGroupUpDef | deploy.FileGroupDownDef | deploy.InstanceDef | deploy.S3FileGroupUpDef](nicknames string, sourceMap map[string]*GenericDef, entityName string) (map[string]*GenericDef, error) {
+func filterByNickname[GenericDef prj.FileGroupUpDef | prj.FileGroupDownDef | prj.InstanceDef](nicknames string, sourceMap map[string]*GenericDef, entityName string) (map[string]*GenericDef, error) {
 	var defMap map[string]*GenericDef
 	rawNicknames := strings.Split(nicknames, ",")
 	defMap = map[string]*GenericDef{}
@@ -126,15 +127,13 @@ Commands:
   %s <comma-separated list of instances to create, or 'all'>
   %s <comma-separated list of instances to delete, or 'all'>
   %s <comma-separated list of instances to ping, or 'all'>
-  %s <comma-separated list of instances to create users on, or 'all'>
-  %s <comma-separated list of instances to copy private keys to, or 'all'>
   %s <comma-separated list of upload file groups, or 'all'>
   %s <comma-separated list of download file groups, or 'all'>  
-  %s <comma-separated list of upload S3 file groups, or 'all'>
   %s <comma-separated list of instances to install services on, or 'all'>
   %s <comma-separated list of instances to config services on, or 'all'>
   %s <comma-separated list of instances to start services on, or 'all'>
   %s <comma-separated list of instances to stop services on, or 'all'>
+  %s
 `,
 		CmdCreateFloatingIps,
 		CmdDeleteFloatingIps,
@@ -151,18 +150,15 @@ Commands:
 		CmdDeleteInstances,
 		CmdPingInstances,
 
-		CmdCreateInstanceUsers,
-		CmdCopyPrivateKeys,
-
 		CmdUploadFiles,
 		CmdDownloadFiles,
-
-		CmdUploadS3,
 
 		CmdInstallServices,
 		CmdConfigServices,
 		CmdStartServices,
 		CmdStopServices,
+
+		CmdConfigCassandraCluster,
 	)
 	fmt.Printf("\nOptional parameters:\n")
 	flagset.PrintDefaults()
@@ -198,7 +194,7 @@ func main() {
 		CmdDeleteSecurityGroups: nil,
 		CmdCreateNetworking:     nil,
 		CmdDeleteNetworking:     nil,
-		CmdBuildArtifacts:       deploy.BuildArtifacts,
+		CmdBuildArtifacts:       nil,
 	}
 
 	if _, ok := singleThreadCommands[os.Args[1]]; ok {
@@ -215,12 +211,13 @@ func main() {
 		log.Fatalf(prjErr.Error())
 	}
 
-	deployProvider, deployProviderErr := deploy.DeployProviderFactory(prjPair, context.TODO(), *argVerbosity)
+	deployProvider, deployProviderErr := provider.DeployProviderFactory(prjPair, context.TODO(), *argVerbosity)
 	if deployProviderErr != nil {
 		log.Fatalf(deployProviderErr.Error())
 	}
+	singleThreadCommands[CmdBuildArtifacts] = deployProvider.BuildArtifacts
 	singleThreadCommands[CmdCreateFloatingIps] = deployProvider.CreateFloatingIps
-	singleThreadCommands[Cmds] = deployProvider.DeleteFloatingIps
+	singleThreadCommands[CmdDeleteFloatingIps] = deployProvider.DeleteFloatingIps
 	singleThreadCommands[CmdCreateSecurityGroups] = deployProvider.CreateSecurityGroups
 	singleThreadCommands[CmdDeleteSecurityGroups] = deployProvider.DeleteSecurityGroups
 	singleThreadCommands[CmdCreateNetworking] = deployProvider.CreateNetworking
@@ -230,7 +227,7 @@ func main() {
 		errChan = make(chan error, errorsExpected)
 		sem <- 1
 		go func() {
-			logMsg, err := cmdHandler(prjPair, *argVerbosity)
+			logMsg, err := cmdHandler()
 			logChan <- logMsg
 			errChan <- err
 			<-sem
@@ -271,7 +268,7 @@ func main() {
 				log.Fatalf(err.Error())
 			}
 
-			logMsg, err = deployProvider.GetKeypairs(usedKeypairs)
+			logMsg, err = deployProvider.VerifyKeypairs(usedKeypairs)
 			logChan <- logMsg
 			DumpLogChan(logChan)
 			if err != nil {
@@ -301,7 +298,7 @@ func main() {
 				<-throttle
 				sem <- 1
 				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
-					logMsg, err := deployProvider.DeleteInstance(prjPair, iNickname, *argVerbosity)
+					logMsg, err := deployProvider.DeleteInstance(iNickname)
 					logChan <- logMsg
 					errChan <- err
 					<-sem
@@ -311,8 +308,6 @@ func main() {
 			log.Fatalf("unknown create/delete instance command:" + os.Args[1])
 		}
 	} else if os.Args[1] == CmdPingInstances ||
-		os.Args[1] == CmdCreateInstanceUsers ||
-		os.Args[1] == CmdCopyPrivateKeys ||
 		os.Args[1] == CmdInstallServices ||
 		os.Args[1] == CmdConfigServices ||
 		os.Args[1] == CmdStartServices ||
@@ -332,38 +327,24 @@ func main() {
 		for _, iDef := range instances {
 			<-throttle
 			sem <- 1
-			go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, iDef *deploy.InstanceDef) {
+			go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, iDef *prj.InstanceDef) {
 				var logMsg l.LogMsg
 				var finalErr error
 				switch os.Args[1] {
 				case CmdPingInstances:
 					// Just run WhoAmI
-					logMsg, finalErr = deploy.ExecCommandsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), []string{"id"}, *argVerbosity)
-				case CmdCreateInstanceUsers:
-					cmds, err := deploy.NewCreateInstanceUsersCommands(iDef)
-					if err != nil {
-						log.Fatalf("cannot build commands to create instance users: %s", err.Error())
-					}
-					logMsg, finalErr = deploy.ExecCommandsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), cmds, *argVerbosity)
-
-				case CmdCopyPrivateKeys:
-					cmds, err := deploy.NewCopyPrivateKeysCommands(iDef)
-					if err != nil {
-						log.Fatalf("cannot build commands to copy private keys: %s", err.Error())
-					}
-					logMsg, finalErr = deploy.ExecCommandsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), cmds, *argVerbosity)
-
+					logMsg, finalErr = exec.ExecCommandOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), "id", *argVerbosity)
 				case CmdInstallServices:
-					logMsg, finalErr = deploy.ExecScriptsOnInstance(prj.SshConfig, iDef.BestIpAddress(), iDef.Service.Env, prjPair.ProjectFileDirPath, iDef.Service.Cmd.Install, *argVerbosity)
+					logMsg, finalErr = sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Install, iDef.Service.Env, *argVerbosity)
 
 				case CmdConfigServices:
-					logMsg, finalErr = deploy.ExecScriptsOnInstance(prj.SshConfig, iDef.BestIpAddress(), iDef.Service.Env, prjPair.ProjectFileDirPath, iDef.Service.Cmd.Config, *argVerbosity)
+					logMsg, finalErr = sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Config, iDef.Service.Env, *argVerbosity)
 
 				case CmdStartServices:
-					logMsg, finalErr = deploy.ExecScriptsOnInstance(prj.SshConfig, iDef.BestIpAddress(), iDef.Service.Env, prjPair.ProjectFileDirPath, iDef.Service.Cmd.Start, *argVerbosity)
+					logMsg, finalErr = sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Start, iDef.Service.Env, *argVerbosity)
 
 				case CmdStopServices:
-					logMsg, finalErr = deploy.ExecScriptsOnInstance(prj.SshConfig, iDef.BestIpAddress(), iDef.Service.Env, prjPair.ProjectFileDirPath, iDef.Service.Cmd.Stop, *argVerbosity)
+					logMsg, finalErr = sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Stop, iDef.Service.Env, *argVerbosity)
 
 				default:
 					log.Fatalf("unknown service command:" + os.Args[1])
@@ -403,21 +384,21 @@ func main() {
 				switch os.Args[1] {
 				case CmdCreateVolumes:
 					go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
-						logMsg, err := deployProvider.CreateVolume(prjPair, iNickname, volNickname, *argVerbosity)
+						logMsg, err := deployProvider.CreateVolume(iNickname, volNickname)
 						logChan <- logMsg
 						errChan <- err
 						<-sem
 					}(prjPair, logChan, errChan, iNickname, volNickname)
 				case CmdAttachVolumes:
 					go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
-						logMsg, err := deployProvider.AttachVolume(prjPair, iNickname, volNickname, *argVerbosity)
+						logMsg, err := deployProvider.AttachVolume(iNickname, volNickname)
 						logChan <- logMsg
 						errChan <- err
 						<-sem
 					}(prjPair, logChan, errChan, iNickname, volNickname)
 				case CmdDeleteVolumes:
 					go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
-						logMsg, err := deployProvider.DeleteVolume(prjPair, iNickname, volNickname, *argVerbosity)
+						logMsg, err := deployProvider.DeleteVolume(iNickname, volNickname)
 						logChan <- logMsg
 						errChan <- err
 						<-sem
@@ -441,7 +422,7 @@ func main() {
 			}
 
 			// Walk through src locally and create file upload specs and after-file specs
-			fileSpecs, afterSpecs, err := deploy.FileGroupUpDefsToSpecs(&prjPair.Live, fileGroups)
+			fileSpecs, afterSpecs, err := updown.FileGroupUpDefsToSpecs(&prjPair.Live, fileGroups)
 			if err != nil {
 				log.Fatalf(err.Error())
 			}
@@ -450,8 +431,8 @@ func main() {
 			errChan = make(chan error, len(fileSpecs))
 			for _, fuSpec := range fileSpecs {
 				sem <- 1
-				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, fuSpec *deploy.FileUploadSpec) {
-					logMsg, err := deploy.UploadFileSftp(prj, fuSpec.IpAddress, fuSpec.Src, fuSpec.Dst, fuSpec.DirPermissions, fuSpec.FilePermissions, fuSpec.Owner, *argVerbosity)
+				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, fuSpec *updown.FileUploadSpec) {
+					logMsg, err := updown.UploadFileSftp(prj, fuSpec.IpAddress, fuSpec.Src, fuSpec.Dst, fuSpec.DirPermissions, fuSpec.FilePermissions, fuSpec.Owner, *argVerbosity)
 					logChan <- logMsg
 					errChan <- err
 					<-sem
@@ -467,8 +448,8 @@ func main() {
 			errChan = make(chan error, len(afterSpecs))
 			for _, aSpec := range afterSpecs {
 				sem <- 1
-				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, aSpec *deploy.AfterFileUploadSpec) {
-					logMsg, err := deploy.ExecScriptsOnInstance(prj.SshConfig, aSpec.IpAddress, aSpec.Env, prjPair.ProjectFileDirPath, aSpec.Cmd, *argVerbosity)
+				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, aSpec *updown.AfterFileUploadSpec) {
+					logMsg, err := sh.ExecEmbeddedScriptsOnInstance(prj.SshConfig, aSpec.IpAddress, aSpec.Cmd, aSpec.Env, *argVerbosity)
 					logChan <- logMsg
 					errChan <- err
 					<-sem
@@ -487,7 +468,7 @@ func main() {
 			}
 
 			// Walk through src remotely and create file upload specs
-			fileSpecs, err := deploy.FileGroupDownDefsToSpecs(&prjPair.Live, fileGroups)
+			fileSpecs, err := updown.FileGroupDownDefsToSpecs(&prjPair.Live, fileGroups)
 			if err != nil {
 				log.Fatalf(err.Error())
 			}
@@ -496,41 +477,115 @@ func main() {
 			errChan = make(chan error, len(fileSpecs))
 			for _, fdSpec := range fileSpecs {
 				sem <- 1
-				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, fdSpec *deploy.FileDownloadSpec) {
-					logMsg, err := deploy.DownloadFileSftp(prj, fdSpec.IpAddress, fdSpec.Src, fdSpec.Dst, *argVerbosity)
+				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, fdSpec *updown.FileDownloadSpec) {
+					logMsg, err := updown.DownloadFileSftp(prj, fdSpec.IpAddress, fdSpec.Src, fdSpec.Dst, *argVerbosity)
 					logChan <- logMsg
 					errChan <- err
 				}(&prjPair.Live, logChan, errChan, fdSpec)
 			}
 
-		case CmdUploadS3:
-			nicknames, err := getNicknamesArg("S3 file groups to upload")
-			if err != nil {
-				log.Fatalf(err.Error())
+		case CmdConfigCassandraCluster:
+			var someCassIpAddress string
+			cassandraInstanceDefs := map[string]*prj.InstanceDef{}
+			for iNickname, iDef := range prjPair.Live.Instances {
+				if iDef.Purpose == string(prj.InstancePurposeCassandra) {
+					cassandraInstanceDefs[iNickname] = iDef
+					if someCassIpAddress == "" {
+						someCassIpAddress = iDef.IpAddress
+					}
+				}
 			}
 
-			s3FileGroups, err := filterByNickname(nicknames, prjPair.Live.S3FileGroupsUp, "S3 file group to upload")
-			if err != nil {
-				log.Fatalf(err.Error())
+			if len(cassandraInstanceDefs) == 0 {
+				log.Fatalf("no cassandra instances")
 			}
 
-			// Walk through src locally and create file upload specs and after-file specs
-			fileSpecs, err := deploy.S3FileGroupUpDefsToSpecs(&prjPair.Live, s3FileGroups)
-			if err != nil {
-				log.Fatalf(err.Error())
-			}
+			// Stop all at once
 
-			errorsExpected = len(fileSpecs)
-			errChan = make(chan error, len(fileSpecs))
-			for _, fuSpec := range fileSpecs {
+			errorsExpected = len(cassandraInstanceDefs)
+			errChan = make(chan error, len(cassandraInstanceDefs))
+			for _, iDef := range cassandraInstanceDefs {
+				<-throttle
 				sem <- 1
-				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, fuSpec *deploy.S3FileUploadSpec) {
-					logMsg, err := deploy.UploadFileS3(prj, fuSpec.Src, fuSpec.Dst, *argVerbosity)
+				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, iDef *prj.InstanceDef) {
+					logMsg, finalErr := sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Stop, iDef.Service.Env, *argVerbosity)
 					logChan <- logMsg
-					errChan <- err
+					errChan <- finalErr
 					<-sem
-				}(&prjPair.Live, logChan, errChan, fuSpec)
+				}(&prjPair.Live, logChan, errChan, iDef)
 			}
+
+			stopCassErr := waitForWorkers(errorsExpected, errChan, logChan)
+			if stopCassErr > 0 {
+				os.Exit(stopCassErr)
+			}
+
+			// Config/start all at once
+
+			errorsExpected = len(cassandraInstanceDefs)
+			errChan = make(chan error, len(cassandraInstanceDefs))
+			for _, iDef := range cassandraInstanceDefs {
+				<-throttle
+				sem <- 1
+				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, iDef *prj.InstanceDef) {
+					logMsg, finalErr := sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Config, iDef.Service.Env, *argVerbosity)
+					logChan <- logMsg
+					errChan <- finalErr
+					<-sem
+				}(&prjPair.Live, logChan, errChan, iDef)
+			}
+
+			confCassErr := waitForWorkers(errorsExpected, errChan, logChan)
+			if confCassErr > 0 {
+				os.Exit(confCassErr)
+			}
+
+			// Verify the cluster is running
+
+			errorsExpected = 1
+			errChan = make(chan error, 1)
+			sem <- 1
+			go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error) {
+				startWaitTs := time.Now()
+				var logMsg l.LogMsg
+				var finalErr error
+				for {
+					logMsg, finalErr = exec.ExecCommandOnInstance(prjPair.Live.SshConfig, someCassIpAddress, "nodetool describecluster;nodetool status", true)
+					if finalErr != nil {
+						break
+					}
+
+					if strings.Contains(string(logMsg), "Normal/Leaving/Joining/Moving") {
+						completeCount := 0
+						for _, iDef := range cassandraInstanceDefs {
+							if strings.Contains(string(logMsg), "UN  "+iDef.IpAddress) {
+								completeCount++
+							}
+						}
+
+						if completeCount == len(cassandraInstanceDefs) {
+							break
+						}
+					} else {
+						if !strings.Contains(string(logMsg), "nodetool: Failed to connect") ||
+							!strings.Contains(string(logMsg), "InstanceNotFoundException") ||
+							!strings.Contains(string(logMsg), "Has this node finished starting up") {
+							// Unknown problem
+							finalErr = fmt.Errorf("unknown nodetool output")
+							break
+						}
+					}
+
+					if time.Since(startWaitTs).Seconds() > float64(60) {
+						finalErr = fmt.Errorf("giving up waiting for cluster to start")
+						break
+					}
+					time.Sleep(5 * time.Second)
+				}
+				logChan <- logMsg
+				errChan <- finalErr
+				<-sem
+			}(&prjPair.Live, logChan, errChan)
 
 		default:
 			log.Fatalf("unknown command:" + os.Args[1])
@@ -548,5 +603,5 @@ func main() {
 		os.Exit(finalCmdErr)
 	}
 
-	fmt.Printf("%s %sOK%s, elapsed %.3fs\n", os.Args[1], deploy.LogColorGreen, deploy.LogColorReset, time.Since(cmdStartTs).Seconds())
+	fmt.Printf("%s %sOK%s, elapsed %.3fs\n", os.Args[1], l.LogColorGreen, l.LogColorReset, time.Since(cmdStartTs).Seconds())
 }

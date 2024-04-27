@@ -1,4 +1,4 @@
-package deploy
+package updown
 
 import (
 	"errors"
@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/capillariesio/capillaries-deploy/pkg/exec"
+	"github.com/capillariesio/capillaries-deploy/pkg/l"
+	"github.com/capillariesio/capillaries-deploy/pkg/prj"
 	"github.com/pkg/sftp"
 )
 
@@ -26,7 +29,7 @@ type AfterFileUploadSpec struct {
 	Cmd       []string
 }
 
-func FileGroupUpDefsToSpecs(prj *Project, fileGroupsToUpload map[string]*FileGroupUpDef) ([]*FileUploadSpec, []*AfterFileUploadSpec, error) {
+func FileGroupUpDefsToSpecs(prj *prj.Project, fileGroupsToUpload map[string]*prj.FileGroupUpDef) ([]*FileUploadSpec, []*AfterFileUploadSpec, error) {
 	fileUploadSpecs := make([]*FileUploadSpec, 0)
 	afterFileUploadSpecMap := map[string]map[string]struct{}{} // inst_ip->group_name->struct{}
 	afterFileUploadSpecs := make([]*AfterFileUploadSpec, 0)
@@ -95,8 +98,8 @@ type FileDownloadSpec struct {
 	Dst       string
 }
 
-func InstanceFileGroupDownDefsToSpecs(prj *Project, ipAddress string, fgDef *FileGroupDownDef) ([]*FileDownloadSpec, error) {
-	tsc, err := NewTunneledSshClient(prj.SshConfig, ipAddress)
+func InstanceFileGroupDownDefsToSpecs(prj *prj.Project, ipAddress string, fgDef *prj.FileGroupDownDef) ([]*FileDownloadSpec, error) {
+	tsc, err := exec.NewTunneledSshClient(prj.SshConfig, ipAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +129,7 @@ func InstanceFileGroupDownDefsToSpecs(prj *Project, ipAddress string, fgDef *Fil
 	return fileDownloadSpecs, nil
 }
 
-func FileGroupDownDefsToSpecs(prj *Project, fileGroupsToDownload map[string]*FileGroupDownDef) ([]*FileDownloadSpec, error) {
+func FileGroupDownDefsToSpecs(prj *prj.Project, fileGroupsToDownload map[string]*prj.FileGroupDownDef) ([]*FileDownloadSpec, error) {
 	fileDownloadSpecs := make([]*FileDownloadSpec, 0)
 	groupCountMap := map[string]int{}
 	sbDuplicates := strings.Builder{}
@@ -158,9 +161,9 @@ func FileGroupDownDefsToSpecs(prj *Project, fileGroupsToDownload map[string]*Fil
 	return fileDownloadSpecs, nil
 }
 
-func UploadFileSftp(prj *Project, ipAddress string, srcPath string, dstPath string, dirPermissions int, filePermissions int, owner string, isVerbose bool) (LogMsg, error) {
-	lb := NewLogBuilder(fmt.Sprintf("Uploading %s to %s:%s", srcPath, ipAddress, dstPath), isVerbose)
-	tsc, err := NewTunneledSshClient(prj.SshConfig, ipAddress)
+func UploadFileSftp(prj *prj.Project, ipAddress string, srcPath string, dstPath string, dirPermissions int, filePermissions int, owner string, isVerbose bool) (l.LogMsg, error) {
+	lb := l.NewLogBuilder(fmt.Sprintf("Uploading %s to %s:%s", srcPath, ipAddress, dstPath), isVerbose)
+	tsc, err := exec.NewTunneledSshClient(prj.SshConfig, ipAddress)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -189,20 +192,20 @@ func UploadFileSftp(prj *Project, ipAddress string, srcPath string, dstPath stri
 		}
 
 		// Do not use sftp.Mkdir(), it causes SSH_FX_FAILURE when >1 clients is used in parallel
-		if _, _, err := ExecSshForClient(tsc.SshClient, fmt.Sprintf("mkdir %s", curPath)); err != nil {
+		if _, _, err := exec.ExecSshForClient(tsc.SshClient, fmt.Sprintf("mkdir %s", curPath)); err != nil {
 			if !strings.Contains(err.Error(), "File exists") {
 				return lb.Complete(err)
 			}
 		}
 
 		// Do not use sftp.Chmod(), it throws permission denied when >1 clients is used in parallel
-		if _, _, err := ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo chmod %d %s", dirPermissions, curPath)); err != nil {
+		if _, _, err := exec.ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo chmod %d %s", dirPermissions, curPath)); err != nil {
 			return lb.Complete(err)
 		}
 
 		if owner != "" {
 			// Do not use sftp.Chown(), it does not work for sudo
-			if _, _, err := ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo chown %s %s", owner, curPath)); err != nil {
+			if _, _, err := exec.ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo chown %s %s", owner, curPath)); err != nil {
 				return lb.Complete(err)
 			}
 		}
@@ -221,7 +224,7 @@ func UploadFileSftp(prj *Project, ipAddress string, srcPath string, dstPath stri
 
 	lb.Sb.WriteString(fmt.Sprintf("(size %d) ", fi.Size()))
 
-	if _, _, err := ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo rm -f %s", dstPath)); err != nil {
+	if _, _, err := exec.ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo rm -f %s", dstPath)); err != nil {
 		return lb.Complete(err)
 	}
 
@@ -241,13 +244,13 @@ func UploadFileSftp(prj *Project, ipAddress string, srcPath string, dstPath stri
 
 	// sftp.Chmod 666 on a file owned by other user throws permission denied", even if existing permissions are 666 already
 	// Also, sftp.Chmod tends to cause SSH_FX_FAILURE when >1 clients is used in parallel. Use sudo chmod command instead.
-	if _, _, err := ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo chmod %d %s", filePermissions, dstPath)); err != nil {
+	if _, _, err := exec.ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo chmod %d %s", filePermissions, dstPath)); err != nil {
 		return lb.Complete(err)
 	}
 
 	if owner != "" {
 		// Do not use sftp.Chown(), it does not work for sudo
-		if _, _, err := ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo chown %s %s", owner, dstPath)); err != nil {
+		if _, _, err := exec.ExecSshForClient(tsc.SshClient, fmt.Sprintf("sudo chown %s %s", owner, dstPath)); err != nil {
 			return lb.Complete(err)
 		}
 	}
@@ -255,9 +258,9 @@ func UploadFileSftp(prj *Project, ipAddress string, srcPath string, dstPath stri
 	return lb.Complete(nil)
 }
 
-func DownloadFileSftp(prj *Project, ipAddress string, srcPath string, dstPath string, isVerbose bool) (LogMsg, error) {
-	lb := NewLogBuilder(fmt.Sprintf("Downloading %s:%s to %s", ipAddress, srcPath, dstPath), isVerbose)
-	tsc, err := NewTunneledSshClient(prj.SshConfig, ipAddress)
+func DownloadFileSftp(prj *prj.Project, ipAddress string, srcPath string, dstPath string, isVerbose bool) (l.LogMsg, error) {
+	lb := l.NewLogBuilder(fmt.Sprintf("Downloading %s:%s to %s", ipAddress, srcPath, dstPath), isVerbose)
+	tsc, err := exec.NewTunneledSshClient(prj.SshConfig, ipAddress)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -294,58 +297,6 @@ func DownloadFileSftp(prj *Project, ipAddress string, srcPath string, dstPath st
 	_, err = dstFile.ReadFrom(srcFile)
 	if err != nil {
 		return lb.Complete(fmt.Errorf("cannot read for download %s: %s", srcPath, err.Error()))
-	}
-
-	return lb.Complete(nil)
-}
-
-type S3FileUploadSpec struct {
-	Src string
-	Dst string
-}
-
-func S3FileGroupUpDefsToSpecs(prj *Project, s3FileGroupsToUpload map[string]*S3FileGroupUpDef) ([]*S3FileUploadSpec, error) {
-	s3FileUploadSpecs := make([]*S3FileUploadSpec, 0)
-	for fgName, fgDef := range s3FileGroupsToUpload {
-		srcAbsPath, err := filepath.Abs(fgDef.Src)
-		if err != nil {
-			return nil, fmt.Errorf("cannot resolve absolute src path from %s: %s", fgDef.Src, err.Error())
-		}
-		fi, err := os.Stat(srcAbsPath)
-		if err != nil {
-			return nil, fmt.Errorf("cannot analyze path %s in %s: %s", srcAbsPath, fgName, err.Error())
-		}
-		if fi.IsDir() {
-			if err := filepath.WalkDir(srcAbsPath, func(path string, d fs.DirEntry, err error) error {
-				if !d.IsDir() {
-					fileSubpath := strings.ReplaceAll(path, srcAbsPath, "")
-					s3FileUploadSpecs = append(s3FileUploadSpecs, &S3FileUploadSpec{
-						Src: path,
-						Dst: fgDef.Bucket + "/" + filepath.Join(fgDef.Dst, fileSubpath),
-					})
-				}
-				return nil
-			}); err != nil {
-				return nil, fmt.Errorf("bad file group up %s", fgName)
-			}
-		} else {
-			s3FileUploadSpecs = append(s3FileUploadSpecs, &S3FileUploadSpec{
-				Src: srcAbsPath,
-				Dst: fgDef.Bucket + "/" + filepath.Join(fgDef.Dst, filepath.Base(srcAbsPath)),
-			})
-		}
-	}
-
-	return s3FileUploadSpecs, nil
-}
-
-func UploadFileS3(prj *Project, srcPath string, dstPath string, isVerbose bool) (LogMsg, error) {
-	lb := NewLogBuilder(fmt.Sprintf("Uploading %s to %s", srcPath, dstPath), isVerbose)
-
-	er := ExecLocal(prj, "aws", []string{"s3", "cp", srcPath, dstPath}, prj.CliEnvVars, "")
-	lb.Add(er.ToString())
-	if er.Error != nil {
-		return lb.Complete(er.Error)
 	}
 
 	return lb.Complete(nil)

@@ -29,13 +29,13 @@ func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
 func (p *AwsDeployProvider) DeleteFloatingIps() (l.LogMsg, error) {
 	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
 
-	err := cldaws.ReleaseFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().PrjPair.Live.SshConfig.ExternalIpAddress, "bastion")
+	err := cldaws.ReleaseFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().PrjPair.Live.SshConfig.ExternalIpAddress)
 	if err != nil {
 		return lb.Complete(err)
 	}
 	p.GetCtx().PrjPair.SetSshExternalIp("")
 
-	err = cldaws.ReleaseFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayPublicIp, "natgw")
+	err = cldaws.ReleaseFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayPublicIp)
 	if err != nil {
 		return lb.Complete(err)
 	}

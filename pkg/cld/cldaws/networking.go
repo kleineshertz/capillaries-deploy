@@ -13,13 +13,13 @@ import (
 
 func GetSubnetIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, subnetName string) (string, error) {
 	if subnetName == "" {
-		return "", fmt.Errorf("subnet name cannot be empty")
+		return "", fmt.Errorf("empty parameter not allowed: subnetName (%s)", subnetName)
 	}
 	out, err := client.DescribeSubnets(goCtx, &ec2.DescribeSubnetsInput{Filters: []types.Filter{{
 		Name: aws.String("tag:Name"), Values: []string{subnetName}}}})
 	lb.AddObject(out)
 	if err != nil {
-		return "", fmt.Errorf("error searching for subnet %s: %s", subnetName, err.Error())
+		return "", fmt.Errorf("cannot describe subnet %s: %s", subnetName, err.Error())
 	}
 	if len(out.Subnets) == 0 {
 		return "", nil
@@ -27,41 +27,10 @@ func GetSubnetIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuild
 	return *out.Subnets[0].SubnetId, nil
 }
 
-func EnsureSubnet(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcId string, name string, cidr string, id string, availabilityZone string) (string, error) {
-	if name == "" || cidr == "" || id == "" || availabilityZone == "" {
-		return "", fmt.Errorf("subnet name(%s), cidr(%s), vpc id(%s), availability_zone(%s) cannot be empty", name, cidr, id, availabilityZone)
+func CreateSubnet(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcId string, subnetName string, cidr string, availabilityZone string) (string, error) {
+	if vpcId == "" || subnetName == "" || cidr == "" || availabilityZone == "" {
+		return "", fmt.Errorf("empty parameter not allowed: vpcId (%s), subnetName (%s), cidr (%s), availabilityZone (%s)", vpcId, subnetName, cidr, availabilityZone)
 	}
-
-	// Check if the subnet is already there
-	foundSubnetIdByName, err := GetSubnetIdByName(client, goCtx, lb, name)
-	if err != nil {
-		return "", err
-	}
-
-	if id == "" {
-		// If it was already created, but was not written to the prj file, save it for future use, but do not create
-		if foundSubnetIdByName != "" {
-			lb.Add(fmt.Sprintf("subnet %s already there, updating project with new id %s", name, foundSubnetIdByName))
-			return foundSubnetIdByName, nil
-		}
-	} else {
-		if foundSubnetIdByName == "" {
-			// It was supposed to be there, but it's not present, complain
-			return "", fmt.Errorf("requested subnet id %s not present, consider removing this id from the project file", id)
-		} else if foundSubnetIdByName != id {
-			// It is already there, but has different id, complain
-			return "", fmt.Errorf("requested subnet id %s not matching existing id %s", id, foundSubnetIdByName)
-		}
-	}
-
-	// Existing id matches the found id, nothing to do
-	if id != "" {
-		lb.Add(fmt.Sprintf("subnet %s(%s) already there, no need to create", name, foundSubnetIdByName))
-		return id, nil
-	}
-
-	// Create
-
 	outCreate, err := client.CreateSubnet(goCtx, &ec2.CreateSubnetInput{
 		VpcId:            aws.String(vpcId),
 		CidrBlock:        aws.String(cidr),
@@ -69,10 +38,10 @@ func EnsureSubnet(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeSubnet,
 			Tags: []types.Tag{
-				{Key: aws.String("Name"), Value: aws.String(name)}}}}})
+				{Key: aws.String("Name"), Value: aws.String(subnetName)}}}}})
 	lb.AddObject(outCreate)
 	if err != nil {
-		return "", fmt.Errorf("error searching for private subnet %s: %s", name, err.Error())
+		return "", fmt.Errorf("cannot create subnet %s: %s", subnetName, err.Error())
 	}
 
 	// TODO: dhcp options and allocation pools?
@@ -81,6 +50,9 @@ func EnsureSubnet(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 }
 
 func DeleteSubnet(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, subnetId string) error {
+	if subnetId == "" {
+		return fmt.Errorf("empty parameter not allowed: subnetId (%s)", subnetId)
+	}
 	out, err := client.DeleteSubnet(goCtx, &ec2.DeleteSubnetInput{SubnetId: aws.String(subnetId)})
 	lb.AddObject(out)
 	if err != nil {
@@ -91,13 +63,13 @@ func DeleteSubnet(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, s
 
 func GetVpcIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcName string) (string, error) {
 	if vpcName == "" {
-		return "", fmt.Errorf("vpc (network) name cannot be empty")
+		return "", fmt.Errorf("empty parameter not allowed: vpcName (%s)", vpcName)
 	}
-	out, err := client.DescribeVpcs(goCtx, &ec2.DescribeVpcsInput{Filters: []types.Filter{types.Filter{
+	out, err := client.DescribeVpcs(goCtx, &ec2.DescribeVpcsInput{Filters: []types.Filter{{
 		Name: aws.String("tag:Name"), Values: []string{vpcName}}}})
 	lb.AddObject(out)
 	if err != nil {
-		return "", fmt.Errorf("error searching for vpc (network) %s: %s", vpcName, err.Error())
+		return "", fmt.Errorf("cannot describe vpc (network) %s: %s", vpcName, err.Error())
 	}
 
 	if len(out.Vpcs) > 0 {
@@ -108,6 +80,9 @@ func GetVpcIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 }
 
 func CreateVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcName string, cidrBlock string, timeoutSeconds int) (string, error) {
+	if vpcName == "" || cidrBlock == "" {
+		return "", fmt.Errorf("empty parameter not allowed: vpcName (%s), cidrBlock (%s)", vpcName, cidrBlock)
+	}
 	outCreate, err := client.CreateVpc(goCtx, &ec2.CreateVpcInput{
 		CidrBlock: aws.String(cidrBlock),
 		TagSpecifications: []types.TagSpecification{{
@@ -125,7 +100,7 @@ func CreateVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcN
 
 	startWaitTs := time.Now()
 	for {
-		out, err := client.DescribeVpcs(goCtx, &ec2.DescribeVpcsInput{Filters: []types.Filter{types.Filter{
+		out, err := client.DescribeVpcs(goCtx, &ec2.DescribeVpcsInput{Filters: []types.Filter{{
 			Name: aws.String("vpc-id"), Values: []string{newVpcId}}}})
 		lb.AddObject(out)
 		if err != nil {
@@ -153,6 +128,9 @@ func CreateVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcN
 }
 
 func DeleteVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcId string) error {
+	if vpcId == "" {
+		return fmt.Errorf("empty parameter not allowed: vpcId (%s)", vpcId)
+	}
 	out, err := client.DeleteVpc(goCtx, &ec2.DeleteVpcInput{VpcId: aws.String(vpcId)})
 	lb.AddObject(out)
 	if err != nil {
@@ -162,6 +140,9 @@ func DeleteVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcI
 }
 
 func CreateInternetGatewayRoute(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableId string, destinationCidrBlock string, internetGatewayId string) error {
+	if routeTableId == "" || destinationCidrBlock == "" || internetGatewayId == "" {
+		return fmt.Errorf("empty parameter not allowed: routeTableId (%s), destinationCidrBlock (%s), internetGatewayId (%s)", routeTableId, destinationCidrBlock, internetGatewayId)
+	}
 	out, err := client.CreateRoute(goCtx, &ec2.CreateRouteInput{
 		RouteTableId:         aws.String(routeTableId),
 		DestinationCidrBlock: aws.String(destinationCidrBlock),
@@ -179,6 +160,9 @@ func CreateInternetGatewayRoute(client *ec2.Client, goCtx context.Context, lb *l
 }
 
 func CreateNatGatewayRoute(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableId string, destinationCidrBlock string, natGatewayId string) error {
+	if routeTableId == "" || destinationCidrBlock == "" || natGatewayId == "" {
+		return fmt.Errorf("empty parameter not allowed: routeTableId (%s), destinationCidrBlock (%s), natGatewayId (%s)", routeTableId, destinationCidrBlock, natGatewayId)
+	}
 	out, err := client.CreateRoute(goCtx, &ec2.CreateRouteInput{
 		RouteTableId:         aws.String(routeTableId),
 		DestinationCidrBlock: aws.String(destinationCidrBlock),
@@ -196,7 +180,10 @@ func CreateNatGatewayRoute(client *ec2.Client, goCtx context.Context, lb *l.LogB
 }
 
 func GetNatGatewayIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, natGatewayName string) (string, error) {
-	out, err := client.DescribeNatGateways(goCtx, &ec2.DescribeNatGatewaysInput{Filter: []types.Filter{types.Filter{Name: aws.String("tag:Name"), Values: []string{natGatewayName}}}})
+	if natGatewayName == "" {
+		return "", fmt.Errorf("empty parameter not allowed: natGatewayName (%s)", natGatewayName)
+	}
+	out, err := client.DescribeNatGateways(goCtx, &ec2.DescribeNatGatewaysInput{Filter: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{natGatewayName}}}})
 	lb.AddObject(out)
 	if err != nil {
 		return "", fmt.Errorf("cannot describe natgw %s: %s", natGatewayName, err.Error())
@@ -208,6 +195,9 @@ func GetNatGatewayIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogB
 }
 
 func CreateNatGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, natGatewayName string, subnetId string, publicIpAllocationId string, timeoutSeconds int) (string, error) {
+	if natGatewayName == "" || subnetId == "" || publicIpAllocationId == "" {
+		return "", fmt.Errorf("empty parameter not allowed: natGatewayName (%s), subnetId (%s), publicIpAllocationId (%s)", natGatewayName, subnetId, publicIpAllocationId)
+	}
 	outCreateNatgw, err := client.CreateNatGateway(goCtx, &ec2.CreateNatGatewayInput{
 		SubnetId:     aws.String(subnetId),
 		AllocationId: aws.String(publicIpAllocationId),
@@ -227,7 +217,7 @@ func CreateNatGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilde
 
 	startWaitTs := time.Now()
 	for {
-		outDescribeNatgw, err := client.DescribeNatGateways(goCtx, &ec2.DescribeNatGatewaysInput{Filter: []types.Filter{types.Filter{
+		outDescribeNatgw, err := client.DescribeNatGateways(goCtx, &ec2.DescribeNatGatewaysInput{Filter: []types.Filter{{
 			Name: aws.String("nat-gateway-id"), Values: []string{natGatewayId}}}})
 		lb.AddObject(outDescribeNatgw)
 		if err != nil {
@@ -255,6 +245,9 @@ func CreateNatGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilde
 }
 
 func DeleteNatGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, natGatewayId string, timeoutSeconds int) error {
+	if natGatewayId == "" {
+		return fmt.Errorf("empty parameter not allowed: natGatewayId (%s)", natGatewayId)
+	}
 	outDeleteNatgw, err := client.DeleteNatGateway(goCtx, &ec2.DeleteNatGatewayInput{
 		NatGatewayId: aws.String(natGatewayId)})
 	lb.AddObject(outDeleteNatgw)
@@ -266,7 +259,7 @@ func DeleteNatGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilde
 	// Network vpc-... has some mapped public address(es). Please unmap those public address(es) before detaching the gateway.
 	startWaitTs := time.Now()
 	for {
-		outDescribeNatgw, err := client.DescribeNatGateways(goCtx, &ec2.DescribeNatGatewaysInput{Filter: []types.Filter{types.Filter{
+		outDescribeNatgw, err := client.DescribeNatGateways(goCtx, &ec2.DescribeNatGatewaysInput{Filter: []types.Filter{{
 			Name: aws.String("nat-gateway-id"), Values: []string{natGatewayId}}}})
 		lb.AddObject(outDescribeNatgw)
 		if err != nil {
@@ -294,6 +287,9 @@ func DeleteNatGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilde
 }
 
 func CreateRouteTableForVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableName string, vpcId string) (string, error) {
+	if routeTableName == "" || vpcId == "" {
+		return "", fmt.Errorf("empty parameter not allowed: routeTableName (%s), vpcId (%s)", routeTableName, vpcId)
+	}
 	out, err := client.CreateRouteTable(goCtx, &ec2.CreateRouteTableInput{
 		VpcId: aws.String(vpcId),
 		TagSpecifications: []types.TagSpecification{{
@@ -307,6 +303,9 @@ func CreateRouteTableForVpc(client *ec2.Client, goCtx context.Context, lb *l.Log
 }
 
 func DeleteRouteTable(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableId string) error {
+	if routeTableId == "" {
+		return fmt.Errorf("empty parameter not allowed: routeTableId (%s)", routeTableId)
+	}
 	out, err := client.DeleteRouteTable(goCtx, &ec2.DeleteRouteTableInput{RouteTableId: aws.String(routeTableId)})
 	lb.AddObject(out)
 	if err != nil {
@@ -316,6 +315,9 @@ func DeleteRouteTable(client *ec2.Client, goCtx context.Context, lb *l.LogBuilde
 }
 
 func AssociateRouteTableWithSubnet(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableId string, subnetId string) (string, error) {
+	if routeTableId == "" || subnetId == "" {
+		return "", fmt.Errorf("empty parameter not allowed: routeTableId (%s), subnetId (%s)", routeTableId, subnetId)
+	}
 	out, err := client.AssociateRouteTable(goCtx, &ec2.AssociateRouteTableInput{
 		RouteTableId: aws.String(routeTableId),
 		SubnetId:     aws.String(subnetId)})
@@ -330,7 +332,10 @@ func AssociateRouteTableWithSubnet(client *ec2.Client, goCtx context.Context, lb
 }
 
 func GetInternetGatewayIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, internetGatewayName string) (string, error) {
-	out, err := client.DescribeInternetGateways(goCtx, &ec2.DescribeInternetGatewaysInput{Filters: []types.Filter{types.Filter{Name: aws.String("tag:Name"), Values: []string{internetGatewayName}}}})
+	if internetGatewayName == "" {
+		return "", fmt.Errorf("empty parameter not allowed: internetGatewayName (%s)", internetGatewayName)
+	}
+	out, err := client.DescribeInternetGateways(goCtx, &ec2.DescribeInternetGatewaysInput{Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{internetGatewayName}}}})
 	lb.AddObject(out)
 	if err != nil {
 		return "", fmt.Errorf("cannot describe internet gateway (router) %s: %s", internetGatewayName, err.Error())
@@ -342,6 +347,9 @@ func GetInternetGatewayIdByName(client *ec2.Client, goCtx context.Context, lb *l
 }
 
 func CreateInternetGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, internetGatewayName string) (string, error) {
+	if internetGatewayName == "" {
+		return "", fmt.Errorf("empty parameter not allowed: internetGatewayName (%s)", internetGatewayName)
+	}
 	outCreateRouter, err := client.CreateInternetGateway(goCtx, &ec2.CreateInternetGatewayInput{
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeInternetGateway,
@@ -362,6 +370,9 @@ func CreateInternetGateway(client *ec2.Client, goCtx context.Context, lb *l.LogB
 }
 
 func DeleteInternetGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, internetGatewayId string) error {
+	if internetGatewayId == "" {
+		return fmt.Errorf("empty parameter not allowed: internetGatewayId (%s)", internetGatewayId)
+	}
 	out, err := client.DeleteInternetGateway(goCtx, &ec2.DeleteInternetGatewayInput{
 		InternetGatewayId: aws.String(internetGatewayId)})
 	lb.AddObject(out)
@@ -372,8 +383,11 @@ func DeleteInternetGateway(client *ec2.Client, goCtx context.Context, lb *l.LogB
 }
 
 func GetInternetGatewayVpcAttachmentById(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, internetGatewayId string) (string, types.AttachmentStatus, error) {
+	if internetGatewayId == "" {
+		return "", types.AttachmentStatusDetached, fmt.Errorf("empty parameter not allowed: internetGatewayId (%s)", internetGatewayId)
+	}
 	out, err := client.DescribeInternetGateways(goCtx, &ec2.DescribeInternetGatewaysInput{
-		Filters: []types.Filter{types.Filter{Name: aws.String("internet-gateway-id"), Values: []string{internetGatewayId}}}})
+		Filters: []types.Filter{{Name: aws.String("internet-gateway-id"), Values: []string{internetGatewayId}}}})
 	lb.AddObject(out)
 	if err != nil {
 		return "", types.AttachmentStatusDetached, fmt.Errorf("cannot verify internet gateway (router) %s: %s", internetGatewayId, err.Error())
@@ -388,6 +402,9 @@ func GetInternetGatewayVpcAttachmentById(client *ec2.Client, goCtx context.Conte
 }
 
 func AttachInternetGatewayToVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, internetGatewayId string, vpcId string) error {
+	if internetGatewayId == "" || vpcId == "" {
+		return fmt.Errorf("empty parameter not allowed: internetGatewayId (%s), vpcId (%s)", internetGatewayId, vpcId)
+	}
 	out, err := client.AttachInternetGateway(goCtx, &ec2.AttachInternetGatewayInput{
 		InternetGatewayId: aws.String(internetGatewayId),
 		VpcId:             aws.String(vpcId)})
@@ -399,6 +416,9 @@ func AttachInternetGatewayToVpc(client *ec2.Client, goCtx context.Context, lb *l
 }
 
 func DetachInternetGatewayFromVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, internetGatewayId string, vpcId string) error {
+	if internetGatewayId == "" || vpcId == "" {
+		return fmt.Errorf("empty parameter not allowed: internetGatewayId (%s), vpcId (%s)", internetGatewayId, vpcId)
+	}
 	out, err := client.DetachInternetGateway(goCtx, &ec2.DetachInternetGatewayInput{
 		InternetGatewayId: aws.String(internetGatewayId),
 		VpcId:             aws.String(vpcId)})
@@ -410,10 +430,13 @@ func DetachInternetGatewayFromVpc(client *ec2.Client, goCtx context.Context, lb 
 }
 
 func GetVpcDefaultRouteTable(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcId string) (string, error) {
+	if vpcId == "" {
+		return "", fmt.Errorf("empty parameter not allowed: vpcId (%s)", vpcId)
+	}
 	out, err := client.DescribeRouteTables(goCtx, &ec2.DescribeRouteTablesInput{
 		Filters: []types.Filter{
-			types.Filter{Name: aws.String("association.main"), Values: []string{"true"}},
-			types.Filter{Name: aws.String("vpc-id"), Values: []string{vpcId}}}})
+			{Name: aws.String("association.main"), Values: []string{"true"}},
+			{Name: aws.String("vpc-id"), Values: []string{vpcId}}}})
 	lb.AddObject(out)
 	if err != nil {
 		return "", fmt.Errorf("cannot obtain default (main) route table for vpc %s: %s", vpcId, err.Error())

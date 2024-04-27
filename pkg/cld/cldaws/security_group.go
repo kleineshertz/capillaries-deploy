@@ -12,7 +12,7 @@ import (
 
 func GetSecurityGroupIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, securityGroupName string) (string, error) {
 	if securityGroupName == "" {
-		return "", fmt.Errorf("security group name cannot be empty")
+		return "", fmt.Errorf("empty parameter not allowed: securityGroupName (%s)", securityGroupName)
 	}
 	out, err := client.DescribeSecurityGroups(goCtx, &ec2.DescribeSecurityGroupsInput{Filters: []types.Filter{{
 		Name: aws.String("tag:Name"), Values: []string{securityGroupName}}}})
@@ -27,8 +27,8 @@ func GetSecurityGroupIdByName(client *ec2.Client, goCtx context.Context, lb *l.L
 }
 
 func CreateSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, securityGroupName string, vpcId string) (string, error) {
-	if securityGroupName == "" {
-		return "", fmt.Errorf("security group name cannot be empty")
+	if securityGroupName == "" || vpcId == "" {
+		return "", fmt.Errorf("empty parameter not allowed: securityGroupName (%s), vpcId (%s)", securityGroupName, vpcId)
 	}
 	out, err := client.CreateSecurityGroup(goCtx, &ec2.CreateSecurityGroupInput{
 		VpcId:       aws.String(vpcId),
@@ -45,8 +45,8 @@ func CreateSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.LogBui
 }
 
 func AuthorizeSecurityGroupIngress(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, securityGroupId string, ipProtocol string, port int32, cidr string) error {
-	if securityGroupId == "" {
-		return fmt.Errorf("security group id cannot be empty")
+	if securityGroupId == "" || ipProtocol == "" || port == 0 || cidr == "" {
+		return fmt.Errorf("empty parameter not allowed: securityGroupId (%s), ipProtocol (%s), port (%d), cidr (%s)", securityGroupId, ipProtocol, port, cidr)
 	}
 	out, err := client.AuthorizeSecurityGroupIngress(goCtx, &ec2.AuthorizeSecurityGroupIngressInput{
 		GroupId:    aws.String(securityGroupId),
@@ -66,7 +66,7 @@ func AuthorizeSecurityGroupIngress(client *ec2.Client, goCtx context.Context, lb
 
 func DeleteSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, securityGroupId string) error {
 	if securityGroupId == "" {
-		return fmt.Errorf("security group id cannot be empty")
+		return fmt.Errorf("empty parameter not allowed: securityGroupId (%s)", securityGroupId)
 	}
 	out, err := client.DeleteSecurityGroup(goCtx, &ec2.DeleteSecurityGroupInput{GroupId: aws.String(securityGroupId)})
 	lb.AddObject(out)

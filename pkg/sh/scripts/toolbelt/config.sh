@@ -21,10 +21,6 @@ sed -i -e 's~"ca_path":[ ]*"[a-zA-Z0-9\.\/\-_]*"~"ca_path":"./ca"~g' $ENV_CONFIG
 # Use Ubuntu CA store
 # sed -i -e 's~"ca_path":[ ]*"[a-zA-Z0-9\.\/\-_]*"~"ca_path":"/usr/local/share/ca-certificates"~g' $ENV_CONFIG_FILE
 
-if [ ! "$SFTP_USER" = "" ]; then
-  sed -i -e "s~\"sftpuser\":[ ]*\"[^\"]*\"~\"sftpuser\": \"/home/"$SSH_USER"/.ssh/$SFTP_USER\"~g" $ENV_CONFIG_FILE
-fi
-
 # If you use your test Cassandra setup up to the limit, try to avoid "Operation timed out - received only 0 responses"
 # Make replication factor at least 2 to make reads more available, 1 for faster writes
 # https://stackoverflow.com/questions/38231621/cassandra-operation-timed-out

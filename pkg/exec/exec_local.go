@@ -1,4 +1,4 @@
-package deploy
+package exec
 
 import (
 	"bytes"
@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/capillariesio/capillaries-deploy/pkg/l"
 )
 
 type ExecResult struct {
@@ -42,9 +42,9 @@ elapsed:%0.3f
 
 func CmdChainExecToString(title string, logContent string, err error, isVerbose bool) string {
 	if err != nil {
-		title = fmt.Sprintf("%s: %s%s%s", title, LogColorRed, err, LogColorReset)
+		title = fmt.Sprintf("%s: %s%s%s", title, l.LogColorRed, err, l.LogColorReset)
 	} else {
-		title = fmt.Sprintf("%s: %sOK%s", title, LogColorGreen, LogColorReset)
+		title = fmt.Sprintf("%s: %sOK%s", title, l.LogColorGreen, l.LogColorReset)
 	}
 
 	if isVerbose {
@@ -61,9 +61,8 @@ func CmdChainExecToString(title string, logContent string, err error, isVerbose 
 	return title
 }
 
-func ExecLocal(prj *Project, cmdPath string, params []string, envVars map[string]string, dir string) ExecResult {
-	// Protect it with a timeout
-	cmdCtx, cancel := context.WithTimeout(context.Background(), time.Duration(prj.Timeouts.OpenstackCmd*int(time.Second)))
+func ExecLocal(cmdPath string, params []string, envVars map[string]string, dir string, timeoutSeconds int) ExecResult {
+	cmdCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds*int(time.Second)))
 	defer cancel()
 
 	p := exec.CommandContext(cmdCtx, cmdPath, params...)
@@ -73,10 +72,14 @@ func ExecLocal(prj *Project, cmdPath string, params []string, envVars map[string
 	}
 
 	for k, v := range envVars {
-		p.Env = append(p.Env, fmt.Sprintf("%s=%s", k, v))
+		if strings.Contains(v, " ") {
+			p.Env = append(p.Env, fmt.Sprintf("%s='%s'", k, v))
+		} else {
+			p.Env = append(p.Env, fmt.Sprintf("%s=%s", k, v))
+		}
 	}
 
-	// Inherit $HOME
+	// Inherit $HOME so we can use ~
 	if _, ok := envVars["HOME"]; !ok {
 		p.Env = append(p.Env, fmt.Sprintf("HOME=%s", os.Getenv("HOME")))
 	}
@@ -104,25 +107,4 @@ func ExecLocal(prj *Project, cmdPath string, params []string, envVars map[string
 	}
 
 	return ExecResult{rawInput, rawOutput, rawErrors, elapsed, nil}
-}
-
-func BuildArtifacts(prjPair *ProjectPair, isVerbose bool) (LogMsg, error) {
-	lb := NewLogBuilder("BuildArtifacts", isVerbose)
-	curDir, err := os.Getwd()
-	if err != nil {
-		return lb.Complete(err)
-	}
-	for _, cmd := range prjPair.Live.Artifacts.Cmd {
-		fullCmdPath, err := filepath.Abs(path.Join(curDir, cmd))
-		if err != nil {
-			return lb.Complete(err)
-		}
-		cmdDir, cmdFileName := filepath.Split(fullCmdPath)
-		er := ExecLocal(&prjPair.Live, "./"+cmdFileName, []string{}, prjPair.Live.Artifacts.Env, cmdDir)
-		lb.Add(er.ToString())
-		if er.Error != nil {
-			return lb.Complete(er.Error)
-		}
-	}
-	return lb.Complete(nil)
 }

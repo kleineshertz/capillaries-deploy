@@ -11,7 +11,7 @@ import (
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 )
 
-func StringToInstanceType(instanceTypeString string) (types.InstanceType, error) {
+func stringToInstanceType(instanceTypeString string) (types.InstanceType, error) {
 	for _, instanceType := range types.InstanceTypeT2Nano.Values() {
 		if string(instanceType) == instanceTypeString {
 			return instanceType, nil
@@ -21,8 +21,11 @@ func StringToInstanceType(instanceTypeString string) (types.InstanceType, error)
 }
 
 func GetInstanceType(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, flavorName string) (string, error) {
-	out, err := client.DescribeInstanceTypes(goCtx, &ec2.DescribeInstanceTypesInput{Filters: []types.Filter{{
-		Name: aws.String("instance-type"), Values: []string{flavorName}}}})
+	if flavorName == "" {
+		return "", fmt.Errorf("empty parameter not allowed: flavorName (%s)", flavorName)
+	}
+	out, err := client.DescribeInstanceTypes(goCtx, &ec2.DescribeInstanceTypesInput{Filters: []types.Filter{
+		{Name: aws.String("instance-type"), Values: []string{flavorName}}}})
 	lb.AddObject(out)
 	if err != nil {
 		return "", fmt.Errorf("cannot find flavor %s:%s", flavorName, err.Error())
@@ -34,6 +37,9 @@ func GetInstanceType(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder
 }
 
 func VerifyImageId(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) (string, error) {
+	if imageId == "" {
+		return "", fmt.Errorf("empty parameter not allowed: imageId (%s)", imageId)
+	}
 	out, err := client.DescribeImages(goCtx, &ec2.DescribeImagesInput{Filters: []types.Filter{{
 		Name: aws.String("image-id"), Values: []string{imageId}}}})
 	lb.AddObject(out)
@@ -47,6 +53,9 @@ func VerifyImageId(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, 
 }
 
 func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, keypairName string) error {
+	if keypairName == "" {
+		return fmt.Errorf("empty parameter not allowed: keypairName (%s)", keypairName)
+	}
 	out, err := client.DescribeKeyPairs(goCtx, &ec2.DescribeKeyPairsInput{Filters: []types.Filter{{
 		Name: aws.String("key-name"), Values: []string{keypairName}}}})
 	lb.AddObject(out)
@@ -60,6 +69,9 @@ func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, 
 }
 
 func GetInstanceIdByHostName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, hostName string) (string, error) {
+	if hostName == "" {
+		return "", fmt.Errorf("empty parameter not allowed: hostName (%s)", hostName)
+	}
 	out, err := client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{Filters: []types.Filter{types.Filter{
 		Name: aws.String("tag:Name"), Values: []string{hostName}}}})
 	lb.AddObject(out)
@@ -76,6 +88,9 @@ func GetInstanceIdByHostName(client *ec2.Client, goCtx context.Context, lb *l.Lo
 }
 
 func getInstanceStateName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string) (types.InstanceStateName, error) {
+	if instanceId == "" {
+		return "", fmt.Errorf("empty parameter not allowed: instanceId (%s)", instanceId)
+	}
 	out, err := client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{InstanceIds: []string{instanceId}})
 	lb.AddObject(out)
 	if err != nil {
@@ -100,17 +115,15 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 	subnetId string,
 	timeoutSeconds int) (string, error) {
 
-	instanceType, err := StringToInstanceType(instanceTypeString)
+	instanceType, err := stringToInstanceType(instanceTypeString)
 	if err != nil {
 		return "", err
 	}
 
 	if imageId == "" || hostName == "" || privateIpAddress == "" || securityGroupId == "" || rootKeyName == "" || subnetId == "" {
-		return "", fmt.Errorf("instance imageId(%s), hostname(%s), ip address(%s), security group id(%s), rook key name(%s), subnet id(%s) cannot be empty",
+		return "", fmt.Errorf("empty parameter not allowed: imageId (%s), hostName (%s), privateIpAddress (%s), securityGroupId (%s), rootKeyName (%s), subnetId (%s)",
 			imageId, hostName, privateIpAddress, securityGroupId, rootKeyName, subnetId)
 	}
-
-	// Start instance
 
 	// NOTE: AWS doesn't allow to specify hostname on creation
 	runOut, err := client.RunInstances(goCtx, &ec2.RunInstancesInput{
@@ -161,6 +174,9 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 }
 
 func AssignAwsFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, floatingIp string) (string, error) {
+	if instanceId == "" || floatingIp == "" {
+		return "", fmt.Errorf("empty parameter not allowed: instanceId (%s), floatingIp (%s)", instanceId, floatingIp)
+	}
 	out, err := client.AssociateAddress(goCtx, &ec2.AssociateAddressInput{
 		InstanceId: aws.String(instanceId),
 		PublicIp:   aws.String(floatingIp)})
@@ -175,6 +191,9 @@ func AssignAwsFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBui
 }
 
 func DeleteInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, timeoutSeconds int) error {
+	if instanceId == "" {
+		return fmt.Errorf("empty parameter not allowed: instanceId (%s)", instanceId)
+	}
 	out, err := client.TerminateInstances(goCtx, &ec2.TerminateInstancesInput{InstanceIds: []string{instanceId}})
 	lb.AddObject(out)
 	if err != nil {

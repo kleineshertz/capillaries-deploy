@@ -13,6 +13,32 @@ if [ "$SSH_USER" = "" ]; then
   exit 1
 fi
 
+if [ "$CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID" = "" ]; then
+  echo Error, missing: CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID=AK...
+  exit 1
+fi
+if [ "$CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY" = "" ]; then
+  echo Error, missing: CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY=...
+  exit 1
+fi
+if [ "$CAPIDEPLOY_IAM_AWS_DEFAULT_REGION" = "" ]; then
+  echo Error, missing: CAPIDEPLOY_IAM_AWS_DEFAULT_REGION=us-east-1
+  exit 1
+fi
+
+# Credentials and config for S3 access
+sudo mkdir '~/.aws'
+sudo cat > ~/.aws/credentials << 'endmsgmarker'
+[default]
+aws_access_key_id=$CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID
+aws_secret_access_key=$CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY
+endmsgmarker
+sudo cat > ~/.aws/config << 'endmsgmarker'
+[default]
+region=$CAPIDEPLOY_IAM_AWS_DEFAULT_REGION
+output=json
+endmsgmarker
+
 pkill -2 capidaemon
 processid=$(pgrep capidaemon)
 if [ "$processid" != "" ]; then
@@ -37,10 +63,6 @@ sed -i -e 's~"ca_path":[ ]*"[^\"]*"~"ca_path":"/home/'$SSH_USER'/bin/ca"~g' $ENV
 # Use Ubuntu CA store
 # sed -i -e 's~"ca_path":[ ]*"[a-zA-Z0-9\.\/\-_]*"~"ca_path":"/usr/local/share/ca-certificates"~g' $ENV_CONFIG_FILE
 
-
-if [ ! "$SFTP_USER" != "" ]; then
-  sed -i -e "s~\"sftpuser\":[ ]*\"[^\"]*\"~\"sftpuser\": \"/home/"$SSH_USER"/.ssh/$SFTP_USER\"~g" $ENV_CONFIG_FILE
-fi
 
 # For our perf testing purposes, decrease latency at the expense of the message queue load
 # sed -i -e 's~"dead_letter_ttl":[ ]*[0-9]*~"dead_letter_ttl": 100~g' $ENV_CONFIG_FILE

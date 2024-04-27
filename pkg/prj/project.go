@@ -6,6 +6,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/capillariesio/capillaries-deploy/pkg/exec"
+)
+
+type InstancePurpose string
+
+const (
+	InstancePurposeBastion    InstancePurpose = "bastion"
+	InstancePurposeCassandra  InstancePurpose = "cassandra"
+	InstancePurposeDaemon     InstancePurpose = "daemon"
+	InstancePurposeRabbitmq   InstancePurpose = "rabbitmq"
+	InstancePurposePrometheus InstancePurpose = "prometheus"
 )
 
 type ExecTimeouts struct {
@@ -14,6 +26,8 @@ type ExecTimeouts struct {
 	CreateNatGateway int `json:"create_nat_gateway"`
 	DeleteNatGateway int `json:"delete_nat_gateway"`
 	CreateNetwork    int `json:"create_network"`
+	AttachVolume     int `json:"attach_volume"`
+	LocalCommand     int `json:"local_command"`
 }
 
 func (t *ExecTimeouts) InitDefaults() {
@@ -31,6 +45,12 @@ func (t *ExecTimeouts) InitDefaults() {
 	}
 	if t.CreateNetwork == 0 {
 		t.CreateNetwork = 120
+	}
+	if t.AttachVolume == 0 {
+		t.AttachVolume = 30
+	}
+	if t.LocalCommand == 0 {
+		t.LocalCommand = 120
 	}
 }
 
@@ -66,6 +86,7 @@ type PrivateSubnetDef struct {
 	RouteTableToNat  string `json:"route_table_to_nat"` // AWS only
 }
 
+// AWS only, Openstack does not need it
 type PublicSubnetDef struct {
 	Name               string `json:"name"`
 	Id                 string `json:"id"`
@@ -125,6 +146,7 @@ type PrivateKeyDef struct {
 	PrivateKeyPath string `json:"private_key_path"`
 }
 type InstanceDef struct {
+	Purpose                        string                `json:"purpose"`
 	HostName                       string                `json:"host_name"`
 	SecurityGroupNickname          string                `json:"security_group"`
 	RootKeyName                    string                `json:"root_key_name"`
@@ -137,8 +159,6 @@ type InstanceDef struct {
 	SubnetType                     string                `json:"subnet_type"`
 	Volumes                        map[string]*VolumeDef `json:"volumes,omitempty"`
 	Id                             string                `json:"id"`
-	Users                          []UserDef             `json:"users,omitempty"`
-	PrivateKeys                    []PrivateKeyDef       `json:"private_keys,omitempty"`
 	Service                        ServiceDef            `json:"service"`
 	ApplicableFileGroups           []string              `json:"applicable_file_groups,omitempty"`
 }
@@ -160,14 +180,6 @@ func (iDef *InstanceDef) Clean() {
 	}
 }
 
-type SshConfigDef struct {
-	ExternalIpAddress  string `json:"external_ip_address"`
-	Port               int    `json:"port"`
-	User               string `json:"user"`
-	PrivateKeyPath     string `json:"private_key_path"`
-	PrivateKeyPassword string `json:"private_key_password"`
-}
-
 type FileGroupUpAfter struct {
 	Env map[string]string `json:"env,omitempty"`
 	Cmd []string          `json:"cmd,omitempty"`
@@ -182,12 +194,6 @@ type FileGroupUpDef struct {
 	After           FileGroupUpAfter `json:"after,omitempty"`
 }
 
-type S3FileGroupUpDef struct {
-	Bucket string `json:"bucket"` // s3://capi-in
-	Src    string `json:"src"`
-	Dst    string `json:"dst"`
-}
-
 type FileGroupDownDef struct {
 	Src string `json:"src"`
 	Dst string `json:"dst"`
@@ -200,7 +206,7 @@ type BuildArtifactsDef struct {
 
 type Project struct {
 	Artifacts          BuildArtifactsDef            `json:"artifacts"`
-	SshConfig          *SshConfigDef                `json:"ssh_config"`
+	SshConfig          *exec.SshConfigDef           `json:"ssh_config"`
 	Timeouts           ExecTimeouts                 `json:"timeouts"`
 	EnvVariablesUsed   []string                     `json:"env_variables_used"`
 	SecurityGroups     map[string]*SecurityGroupDef `json:"security_groups"`
@@ -209,7 +215,6 @@ type Project struct {
 	FileGroupsDown     map[string]*FileGroupDownDef `json:"file_groups_down"`
 	Instances          map[string]*InstanceDef      `json:"instances"`
 	DeployProviderName string                       `json:"deploy_provider_name"`
-	S3FileGroupsUp     map[string]*S3FileGroupUpDef `json:"s3_file_groups_up"`
 	CliEnvVars         map[string]string
 }
 
