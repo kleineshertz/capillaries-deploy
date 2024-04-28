@@ -1,4 +1,4 @@
-package exec
+package rexec
 
 import (
 	"bytes"
@@ -12,8 +12,36 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+type ExecResult struct {
+	Cmd     string
+	Stdout  string
+	Stderr  string
+	Elapsed float64
+	Error   error
+}
+
+func (er *ExecResult) ToString() string {
+	var errString string
+	if er.Error != nil {
+		errString = er.Error.Error()
+	}
+	return fmt.Sprintf(`
+-----------------------
+cmd:
+%s
+stdout:
+%s
+stderr:
+%s
+error:
+%s
+elapsed:%0.3f
+-----------------------
+`, er.Cmd, er.Stdout, er.Stderr, errString, er.Elapsed)
+}
+
 type SshConfigDef struct {
-	ExternalIpAddress  string `json:"external_ip_address"`
+	ExternalIpAddress  string `json:"external_ip_address"` // Bastion
 	Port               int    `json:"port"`
 	User               string `json:"user"`
 	PrivateKeyPath     string `json:"private_key_path"`
@@ -42,6 +70,7 @@ func (tsc *TunneledSshClient) Close() {
 	}
 }
 
+// Our jumphost implementation
 func NewTunneledSshClient(sshConfig *SshConfigDef, ipAddress string) (*TunneledSshClient, error) {
 	bastionSshClientConfig, err := xfer.NewSshClientConfig(
 		sshConfig.User,

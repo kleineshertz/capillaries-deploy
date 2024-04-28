@@ -13,32 +13,6 @@ if [ "$SSH_USER" = "" ]; then
   exit 1
 fi
 
-if [ "$CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID" = "" ]; then
-  echo Error, missing: CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID=AK...
-  exit 1
-fi
-if [ "$CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY" = "" ]; then
-  echo Error, missing: CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY=...
-  exit 1
-fi
-if [ "$CAPIDEPLOY_IAM_AWS_DEFAULT_REGION" = "" ]; then
-  echo Error, missing: CAPIDEPLOY_IAM_AWS_DEFAULT_REGION=us-east-1
-  exit 1
-fi
-
-# Credentials and config for S3 access
-sudo mkdir '~/.aws'
-sudo cat > ~/.aws/credentials << 'endmsgmarker'
-[default]
-aws_access_key_id=$CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID
-aws_secret_access_key=$CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY
-endmsgmarker
-sudo cat > ~/.aws/config << 'endmsgmarker'
-[default]
-region=$CAPIDEPLOY_IAM_AWS_DEFAULT_REGION
-output=json
-endmsgmarker
-
 pkill -2 capidaemon
 processid=$(pgrep capidaemon)
 if [ "$processid" != "" ]; then
@@ -58,10 +32,10 @@ sed -i -e 's~"hosts":[ ]*\[[0-9a-zA-Z\.\,\-_ "]*\]~"hosts": '$CASSANDRA_HOSTS"~g
 sed -i -e 's~"python_interpreter_path":[ ]*"[a-zA-Z0-9]*"~"python_interpreter_path": "python3"~g' $ENV_CONFIG_FILE
 sed -i -e 's~"level":[ ]*"[a-zA-Z]*"~"level": "info"~g' $ENV_CONFIG_FILE
 
-# Use our own CA store
-sed -i -e 's~"ca_path":[ ]*"[^\"]*"~"ca_path":"/home/'$SSH_USER'/bin/ca"~g' $ENV_CONFIG_FILE
-# Use Ubuntu CA store
-# sed -i -e 's~"ca_path":[ ]*"[a-zA-Z0-9\.\/\-_]*"~"ca_path":"/usr/local/share/ca-certificates"~g' $ENV_CONFIG_FILE
+echo "Patching config to use ca at /home/"$SSH_USER"/ca"
+sed -i -e 's~"ca_path":[ ]*"[^\"]*"~"ca_path":"/home/'$SSH_USER'/ca"~g' $ENV_CONFIG_FILE
+# If you want to use Ubuntu CA store:
+#sed -i -e 's~"ca_path":[ ]*"[a-zA-Z0-9\.\/\-_]*"~"ca_path":"/usr/local/share/ca-certificates"~g' $ENV_CONFIG_FILE
 
 
 # For our perf testing purposes, decrease latency at the expense of the message queue load
@@ -88,13 +62,6 @@ fi
 if [ "$DAEMON_THREAD_POOL_SIZE" != "" ]; then
   sed -i -e "s~\"thread_pool_size\":[ ]*[0-9]*~\"thread_pool_size\": $DAEMON_THREAD_POOL_SIZE~g" $ENV_CONFIG_FILE
 fi
-
-# Weaker encryption to save CPU on the server side - doesn't really speed up things, so don't  do it
-#sudo echo "Host *" > /home/$SSH_USER/.ssh/config
-#sudo echo "  Compression no" >> /home/$SSH_USER/.ssh/config
-#sudo echo "  Ciphers aes128-ctr" >> /home/$SSH_USER/.ssh/config
-#sudo chown $SSH_USER /home/$SSH_USER/.ssh/config
-#sudo chmod 600 /home/$SSH_USER/.ssh/config
 
 sudo rm -fR /var/log/capidaemon
 sudo mkdir /var/log/capidaemon

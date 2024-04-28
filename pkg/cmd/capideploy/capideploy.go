@@ -11,12 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/capillariesio/capillaries-deploy/pkg/exec"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
 	"github.com/capillariesio/capillaries-deploy/pkg/provider"
+	"github.com/capillariesio/capillaries-deploy/pkg/rexec"
 	"github.com/capillariesio/capillaries-deploy/pkg/sh"
-	"github.com/capillariesio/capillaries-deploy/pkg/updown"
 )
 
 const (
@@ -38,7 +37,6 @@ const (
 	CmdStartServices          string = "start_services"
 	CmdStopServices           string = "stop_services"
 	CmdPingInstances          string = "ping_instances"
-	CmdBuildArtifacts         string = "build_artifacts"
 	CmdConfigCassandraCluster string = "config_cassandra_cluster"
 )
 
@@ -61,7 +59,7 @@ func getNicknamesArg(entityName string) (string, error) {
 	return os.Args[2], nil
 }
 
-func filterByNickname[GenericDef prj.FileGroupUpDef | prj.FileGroupDownDef | prj.InstanceDef](nicknames string, sourceMap map[string]*GenericDef, entityName string) (map[string]*GenericDef, error) {
+func filterByNickname[GenericDef prj.InstanceDef](nicknames string, sourceMap map[string]*GenericDef, entityName string) (map[string]*GenericDef, error) {
 	var defMap map[string]*GenericDef
 	rawNicknames := strings.Split(nicknames, ",")
 	defMap = map[string]*GenericDef{}
@@ -127,8 +125,6 @@ Commands:
   %s <comma-separated list of instances to create, or 'all'>
   %s <comma-separated list of instances to delete, or 'all'>
   %s <comma-separated list of instances to ping, or 'all'>
-  %s <comma-separated list of upload file groups, or 'all'>
-  %s <comma-separated list of download file groups, or 'all'>  
   %s <comma-separated list of instances to install services on, or 'all'>
   %s <comma-separated list of instances to config services on, or 'all'>
   %s <comma-separated list of instances to start services on, or 'all'>
@@ -149,9 +145,6 @@ Commands:
 		CmdCreateInstances,
 		CmdDeleteInstances,
 		CmdPingInstances,
-
-		CmdUploadFiles,
-		CmdDownloadFiles,
 
 		CmdInstallServices,
 		CmdConfigServices,
@@ -176,7 +169,7 @@ func main() {
 
 	cmdStartTs := time.Now()
 
-	throttle := time.Tick(time.Second) // One call per second, to avoid error 429 on openstack calls
+	throttle := time.Tick(time.Second) // One call per second, to avoid error 429 on openstack/aws/azure calls
 	const maxWorkerThreads int = 10
 	var logChan = make(chan l.LogMsg, maxWorkerThreads*5)
 	var sem = make(chan int, maxWorkerThreads)
@@ -194,7 +187,6 @@ func main() {
 		CmdDeleteSecurityGroups: nil,
 		CmdCreateNetworking:     nil,
 		CmdDeleteNetworking:     nil,
-		CmdBuildArtifacts:       nil,
 	}
 
 	if _, ok := singleThreadCommands[os.Args[1]]; ok {
@@ -215,7 +207,6 @@ func main() {
 	if deployProviderErr != nil {
 		log.Fatalf(deployProviderErr.Error())
 	}
-	singleThreadCommands[CmdBuildArtifacts] = deployProvider.BuildArtifacts
 	singleThreadCommands[CmdCreateFloatingIps] = deployProvider.CreateFloatingIps
 	singleThreadCommands[CmdDeleteFloatingIps] = deployProvider.DeleteFloatingIps
 	singleThreadCommands[CmdCreateSecurityGroups] = deployProvider.CreateSecurityGroups
@@ -333,7 +324,7 @@ func main() {
 				switch os.Args[1] {
 				case CmdPingInstances:
 					// Just run WhoAmI
-					logMsg, finalErr = exec.ExecCommandOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), "id", *argVerbosity)
+					logMsg, finalErr = rexec.ExecCommandOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), "id", *argVerbosity)
 				case CmdInstallServices:
 					logMsg, finalErr = sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Install, iDef.Service.Env, *argVerbosity)
 
@@ -410,80 +401,6 @@ func main() {
 		}
 	} else {
 		switch os.Args[1] {
-		case CmdUploadFiles:
-			nicknames, err := getNicknamesArg("file groups to upload")
-			if err != nil {
-				log.Fatalf(err.Error())
-			}
-
-			fileGroups, err := filterByNickname(nicknames, prjPair.Live.FileGroupsUp, "file group to upload")
-			if err != nil {
-				log.Fatalf(err.Error())
-			}
-
-			// Walk through src locally and create file upload specs and after-file specs
-			fileSpecs, afterSpecs, err := updown.FileGroupUpDefsToSpecs(&prjPair.Live, fileGroups)
-			if err != nil {
-				log.Fatalf(err.Error())
-			}
-
-			errorsExpected = len(fileSpecs)
-			errChan = make(chan error, len(fileSpecs))
-			for _, fuSpec := range fileSpecs {
-				sem <- 1
-				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, fuSpec *updown.FileUploadSpec) {
-					logMsg, err := updown.UploadFileSftp(prj, fuSpec.IpAddress, fuSpec.Src, fuSpec.Dst, fuSpec.DirPermissions, fuSpec.FilePermissions, fuSpec.Owner, *argVerbosity)
-					logChan <- logMsg
-					errChan <- err
-					<-sem
-				}(&prjPair.Live, logChan, errChan, fuSpec)
-			}
-
-			fileUpErr := waitForWorkers(errorsExpected, errChan, logChan)
-			if fileUpErr > 0 {
-				os.Exit(fileUpErr)
-			}
-
-			errorsExpected = len(afterSpecs)
-			errChan = make(chan error, len(afterSpecs))
-			for _, aSpec := range afterSpecs {
-				sem <- 1
-				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, aSpec *updown.AfterFileUploadSpec) {
-					logMsg, err := sh.ExecEmbeddedScriptsOnInstance(prj.SshConfig, aSpec.IpAddress, aSpec.Cmd, aSpec.Env, *argVerbosity)
-					logChan <- logMsg
-					errChan <- err
-					<-sem
-				}(&prjPair.Live, logChan, errChan, aSpec)
-			}
-
-		case CmdDownloadFiles:
-			nicknames, err := getNicknamesArg("file groups to download")
-			if err != nil {
-				log.Fatalf(err.Error())
-			}
-
-			fileGroups, err := filterByNickname(nicknames, prjPair.Live.FileGroupsDown, "file group to download")
-			if err != nil {
-				log.Fatalf(err.Error())
-			}
-
-			// Walk through src remotely and create file upload specs
-			fileSpecs, err := updown.FileGroupDownDefsToSpecs(&prjPair.Live, fileGroups)
-			if err != nil {
-				log.Fatalf(err.Error())
-			}
-
-			errorsExpected = len(fileSpecs)
-			errChan = make(chan error, len(fileSpecs))
-			for _, fdSpec := range fileSpecs {
-				sem <- 1
-				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, fdSpec *updown.FileDownloadSpec) {
-					logMsg, err := updown.DownloadFileSftp(prj, fdSpec.IpAddress, fdSpec.Src, fdSpec.Dst, *argVerbosity)
-					logChan <- logMsg
-					errChan <- err
-				}(&prjPair.Live, logChan, errChan, fdSpec)
-			}
-
 		case CmdConfigCassandraCluster:
 			var someCassIpAddress string
 			cassandraInstanceDefs := map[string]*prj.InstanceDef{}
@@ -550,7 +467,7 @@ func main() {
 				var logMsg l.LogMsg
 				var finalErr error
 				for {
-					logMsg, finalErr = exec.ExecCommandOnInstance(prjPair.Live.SshConfig, someCassIpAddress, "nodetool describecluster;nodetool status", true)
+					logMsg, finalErr = rexec.ExecCommandOnInstance(prjPair.Live.SshConfig, someCassIpAddress, "nodetool describecluster;nodetool status", true)
 					if finalErr != nil {
 						break
 					}

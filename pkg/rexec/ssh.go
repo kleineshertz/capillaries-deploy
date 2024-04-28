@@ -1,4 +1,4 @@
-package xfer
+package rexec
 
 import (
 	"crypto/x509"

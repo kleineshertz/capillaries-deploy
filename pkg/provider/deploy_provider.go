@@ -9,7 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
-	"github.com/capillariesio/capillaries-deploy/pkg/sh"
 )
 
 type AwsCtx struct {
@@ -24,7 +23,6 @@ type DeployCtx struct {
 }
 type DeployProvider interface {
 	GetCtx() *DeployCtx
-	BuildArtifacts() (l.LogMsg, error)
 	CreateFloatingIps() (l.LogMsg, error)
 	DeleteFloatingIps() (l.LogMsg, error)
 	CreateSecurityGroups() (l.LogMsg, error)
@@ -41,27 +39,12 @@ type DeployProvider interface {
 	DeleteVolume(iNickname string, volNickname string) (l.LogMsg, error)
 }
 
-type OpenstackDeployProvider struct{}
-
 type AwsDeployProvider struct {
 	Ctx *DeployCtx
 }
 
 func (p *AwsDeployProvider) GetCtx() *DeployCtx {
 	return p.Ctx
-}
-func (p *AwsDeployProvider) BuildArtifacts() (l.LogMsg, error) {
-	lb := l.NewLogBuilder("BuildArtifacts", p.GetCtx().IsVerbose)
-	for _, cmd := range p.GetCtx().PrjPair.Live.Artifacts.Cmd {
-		err := sh.ExecEmbeddedScriptLocally(lb, cmd, []string{},
-			p.GetCtx().PrjPair.Live.Artifacts.Env,
-			p.GetCtx().IsVerbose,
-			p.GetCtx().PrjPair.Live.Timeouts.LocalCommand)
-		if err != nil {
-			return lb.Complete(err)
-		}
-	}
-	return lb.Complete(nil)
 }
 
 func DeployProviderFactory(prjPair *prj.ProjectPair, goCtx context.Context, isVerbose bool) (DeployProvider, error) {

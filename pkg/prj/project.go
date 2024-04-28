@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/capillariesio/capillaries-deploy/pkg/exec"
+	"github.com/capillariesio/capillaries-deploy/pkg/rexec"
 )
 
 type InstancePurpose string
@@ -27,7 +27,6 @@ type ExecTimeouts struct {
 	DeleteNatGateway int `json:"delete_nat_gateway"`
 	CreateNetwork    int `json:"create_network"`
 	AttachVolume     int `json:"attach_volume"`
-	LocalCommand     int `json:"local_command"`
 }
 
 func (t *ExecTimeouts) InitDefaults() {
@@ -48,9 +47,6 @@ func (t *ExecTimeouts) InitDefaults() {
 	}
 	if t.AttachVolume == 0 {
 		t.AttachVolume = 30
-	}
-	if t.LocalCommand == 0 {
-		t.LocalCommand = 120
 	}
 }
 
@@ -86,7 +82,7 @@ type PrivateSubnetDef struct {
 	RouteTableToNat  string `json:"route_table_to_nat"` // AWS only
 }
 
-// AWS only, Openstack does not need it
+// AWS-specific
 type PublicSubnetDef struct {
 	Name               string `json:"name"`
 	Id                 string `json:"id"`
@@ -98,9 +94,8 @@ type PublicSubnetDef struct {
 }
 
 type RouterDef struct {
-	Name                       string `json:"name"`
-	Id                         string `json:"id"`
-	ExternalGatewayNetworkName string `json:"external_gateway_network_name"`
+	Name string `json:"name"`
+	Id   string `json:"id"`
 }
 
 type NetworkDef struct {
@@ -155,12 +150,10 @@ type InstanceDef struct {
 	ExternalIpAddress              string                `json:"external_ip_address,omitempty"`
 	FlavorName                     string                `json:"flavor"`
 	ImageName                      string                `json:"image"`
-	AvailabilityZone               string                `json:"availability_zone"`
 	SubnetType                     string                `json:"subnet_type"`
 	Volumes                        map[string]*VolumeDef `json:"volumes,omitempty"`
 	Id                             string                `json:"id"`
 	Service                        ServiceDef            `json:"service"`
-	ApplicableFileGroups           []string              `json:"applicable_file_groups,omitempty"`
 }
 
 func (iDef *InstanceDef) BestIpAddress() string {
@@ -180,49 +173,20 @@ func (iDef *InstanceDef) Clean() {
 	}
 }
 
-type FileGroupUpAfter struct {
-	Env map[string]string `json:"env,omitempty"`
-	Cmd []string          `json:"cmd,omitempty"`
-}
-
-type FileGroupUpDef struct {
-	Src             string           `json:"src"`
-	Dst             string           `json:"dst"`
-	DirPermissions  int              `json:"dir_permissions"`
-	FilePermissions int              `json:"file_permissions"`
-	Owner           string           `json:"owner,omitempty"`
-	After           FileGroupUpAfter `json:"after,omitempty"`
-}
-
-type FileGroupDownDef struct {
-	Src string `json:"src"`
-	Dst string `json:"dst"`
-}
-
-type BuildArtifactsDef struct {
-	Env map[string]string `json:"env"`
-	Cmd []string          `json:"cmd"`
-}
-
 type Project struct {
-	Artifacts          BuildArtifactsDef            `json:"artifacts"`
-	SshConfig          *exec.SshConfigDef           `json:"ssh_config"`
+	SshConfig          *rexec.SshConfigDef          `json:"ssh_config"`
 	Timeouts           ExecTimeouts                 `json:"timeouts"`
 	EnvVariablesUsed   []string                     `json:"env_variables_used"`
 	SecurityGroups     map[string]*SecurityGroupDef `json:"security_groups"`
 	Network            NetworkDef                   `json:"network"`
-	FileGroupsUp       map[string]*FileGroupUpDef   `json:"file_groups_up"`
-	FileGroupsDown     map[string]*FileGroupDownDef `json:"file_groups_down"`
 	Instances          map[string]*InstanceDef      `json:"instances"`
 	DeployProviderName string                       `json:"deploy_provider_name"`
-	CliEnvVars         map[string]string
 }
 
 func (p *Project) InitDefaults() {
 	p.Timeouts.InitDefaults()
 }
 
-const DeployProviderOpenstack string = "openstack"
 const DeployProviderAws string = "aws"
 
 type ProjectPair struct {
@@ -331,8 +295,6 @@ func (prj *Project) validate() error {
 	hostnameMap := map[string]struct{}{}
 	internalIpMap := map[string]struct{}{}
 	externalIpInstanceNickname := ""
-	referencedUpFileGroups := map[string]struct{}{}
-	referencedDownFileGroups := map[string]struct{}{}
 	for iNickname, iDef := range prj.Instances {
 		if iDef.HostName == "" {
 			return fmt.Errorf("instance %s has empty hostname", iNickname)
@@ -364,38 +326,11 @@ func (prj *Project) validate() error {
 		if _, ok := prj.SecurityGroups[iDef.SecurityGroupNickname]; !ok {
 			return fmt.Errorf("instance %s has invalid security group %s", iNickname, iDef.SecurityGroupNickname)
 		}
-
-		// File groups in instances
-		for _, fgName := range iDef.ApplicableFileGroups {
-			_, okUp := prj.FileGroupsUp[fgName]
-			_, okDown := prj.FileGroupsDown[fgName]
-			if okUp && okDown {
-				return fmt.Errorf("instance %s has file group %s referenced as up and down, pick one: either up or down", iNickname, fgName)
-			} else if okUp {
-				referencedUpFileGroups[fgName] = struct{}{}
-			} else if okDown {
-				referencedDownFileGroups[fgName] = struct{}{}
-			} else {
-				return fmt.Errorf("instance %s has invalid file group %s", iNickname, fgName)
-			}
-		}
 	}
 
 	// Need at least one floating ip address
 	if externalIpInstanceNickname == "" {
 		return fmt.Errorf("none of the instances is using ssh_config_external_ip, at least one must have it")
-	}
-
-	// All file groups should be referenced, otherwise useless
-	for fgName := range prj.FileGroupsUp {
-		if _, ok := referencedUpFileGroups[fgName]; !ok {
-			return fmt.Errorf("up file group %s not reference by any instance, consider removing it", fgName)
-		}
-	}
-	for fgName := range prj.FileGroupsDown {
-		if _, ok := referencedDownFileGroups[fgName]; !ok {
-			return fmt.Errorf("down file group %s not reference by any instance, consider removing it", fgName)
-		}
 	}
 
 	return nil
@@ -425,21 +360,20 @@ func LoadProject(prjFile string) (*ProjectPair, string, error) {
 		return nil, "", fmt.Errorf("cannot parse project file %s: %s", prjFullPath, err.Error())
 	}
 
-	if prjPair.Template.DeployProviderName != DeployProviderOpenstack &&
-		prjPair.Template.DeployProviderName != DeployProviderAws {
-		return nil, "", fmt.Errorf("cannot parse deploy provider name %s, expected %s,%s",
+	if prjPair.Template.DeployProviderName != DeployProviderAws {
+		return nil, "", fmt.Errorf("cannot parse deploy provider name %s, expected [%s]",
 			prjPair.Template.DeployProviderName,
-			DeployProviderOpenstack,
 			DeployProviderAws)
 	}
 
 	prjString := string(prjBytes)
 
-	// Read params from env variables, save OS_* vars in prjPair.Live.OpenstackVars, AWS_ in Aws vars
-
 	envVars := map[string]string{}
 	for _, envVar := range prjPair.Template.EnvVariablesUsed {
 		envVars[envVar] = os.Getenv(envVar)
+		if envVars[envVar] == "" {
+			return nil, "", fmt.Errorf("cannot load deployment project, missing env variable %s", envVar)
+		}
 	}
 
 	// Replace env vars
@@ -462,14 +396,6 @@ func LoadProject(prjFile string) (*ProjectPair, string, error) {
 	// Defaults
 
 	prjPair.Live.InitDefaults()
-
-	// Initialize OpenstackVars for calling openstack cmd locally
-	prjPair.Live.CliEnvVars = map[string]string{}
-	for k, v := range envVars {
-		if strings.HasPrefix(k, "OS_") || strings.HasPrefix(k, "AWS_") {
-			prjPair.Live.CliEnvVars[k] = v
-		}
-	}
 
 	if err := prjPair.Live.validate(); err != nil {
 		return nil, "", fmt.Errorf("cannot load project file %s: %s", prjFullPath, err.Error())

@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
-	"github.com/capillariesio/capillaries-deploy/pkg/exec"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
+	"github.com/capillariesio/capillaries-deploy/pkg/rexec"
 )
 
 func (p *AwsDeployProvider) CreateVolume(iNickname string, volNickname string) (l.LogMsg, error) {
@@ -131,7 +131,7 @@ func (p *AwsDeployProvider) AttachVolume(iNickname string, volNickname string) (
 
 	p.GetCtx().PrjPair.SetAttachedVolumeDevice(iNickname, volNickname, newDevice)
 
-	deviceBlockId, er := exec.ExecSshAndReturnLastLine(
+	deviceBlockId, er := rexec.ExecSshAndReturnLastLine(
 		p.GetCtx().PrjPair.Live.SshConfig,
 		p.GetCtx().PrjPair.Live.Instances[iNickname].BestIpAddress(),
 		fmt.Sprintf("%s\ninit_volume_attachment %s %s %d '%s'",

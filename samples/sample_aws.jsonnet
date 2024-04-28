@@ -3,8 +3,8 @@
 
   local dep_name = 'sampleaws001',  // Can be any combination of alphanumeric characters. Make it unique.
   local provider_name = 'aws',
-  local subnet_availability_zone = 'us-east-1a', // Used by AWS, not used by Openstack
-  local cassandra_node_flavor = 'aws.c7g.64', // last number is the number of cores in Cassandra nodes
+  local subnet_availability_zone = 'us-east-1a', // AWS-specific
+  local cassandra_node_flavor = 'aws.c7g.64', // last number is the number of cores in Cassandra nodes. Daemon cores are 4 times less.
   local architecture = 'arm64', // amd64 or arm64 
   local cassandra_total_nodes = 4, // Cassandra cluster size - 4,8,16
   local daemon_total_instances = cassandra_total_nodes, // If tasks are CPU-intensive (Python calc), make it equal to cassandra_total_nodes, otherwise cassandra_total_nodes/2
@@ -13,10 +13,9 @@
 
   // It's unlikely that you need to change anything below this line
 
-  // Network
-  // This is what external network is called for this cloud provider (used by Openstack)
-  local external_gateway_network_name = 'ext-network-not-needed-for-aws',
+  local os_arch = 'linux/' + architecture,
 
+  // Network
   local vpc_cidr = '10.5.0.0/16', // AWS only
   local private_subnet_cidr = '10.5.0.0/24',
   local public_subnet_cidr = '10.5.1.0/24', // AWS only
@@ -49,7 +48,6 @@
   local cassandra_hosts = "'[\"" + std.join('","', cassandra_ips) + "\"]'",  // Used by daemons "'[\"10.5.0.11\",\"10.5.0.12\",\"10.5.0.13\",\"10.5.0.14\",\"10.5.0.15\",\"10.5.0.16\",\"10.5.0.17\",\"10.5.0.18\"]'",
   
   // Instances
-  local instance_availability_zone = 'not-used-borrowed-from-subnet', // Used by Openstack, AWS borrows availability zone from the subnet
   local instance_image_name = 
     if architecture == 'arm64' then 'ami-064b469793e32e5d2' // ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20230904
     else if architecture == 'amd64' then 'ami-0d8583a0d8d6dd14f' //ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-amd64-server-20230714
@@ -126,7 +124,7 @@
     'CAPIDEPLOY_SSH_PRIVATE_KEY_PATH',
     'CAPIDEPLOY_SSH_PRIVATE_KEY_PASS',
     'CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME',
-    'CAPIDEPLOY_CAPILLARIES_ROOT_DIR',
+    'CAPIDEPLOY_CAPILLARIES_RELEASE_URL',
 
     'CAPIDEPLOY_RABBITMQ_ADMIN_NAME',
     'CAPIDEPLOY_RABBITMQ_ADMIN_PASS',
@@ -148,22 +146,6 @@
   timeouts: {
   },
 
-  artifacts: {
-    env: {
-      DIR_CAPILLARIES_ROOT: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}',
-      DIR_BUILD_LINUX_AMD64: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/linux/amd64',
-      DIR_BUILD_LINUX_ARM64: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/linux/arm64',
-      DIR_SRC_CA: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/test/ca',
-      DIR_BUILD_CA: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/ca',
-      DIR_PKG_EXE: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/ca/pkg/exe',
-      DIR_CODE_PARQUET: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/test/code/parquet',
-    },
-    cmd: [
-      'sh/local/build_binaries.sh',
-      'sh/local/build_webui.sh',
-    ],
-  },
-
   network: {
     name: dep_name + '_network',
     cidr: vpc_cidr,
@@ -181,7 +163,6 @@
     },
     router: { // aka AWS internet gateway
       name: dep_name + '_router',
-      external_gateway_network_name: external_gateway_network_name,
     },
   },
   security_groups: {
@@ -324,121 +305,6 @@
       ],
     },
   },
-  file_groups_up: {
-    // daemon/webapi/toolbelt will use it to access https files
-    up_ca: {
-      src: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/ca/all.tgz',
-      dst: '/home/' + $.ssh_config.user + '/bin/ca', // $ENV_CONFIG_FILE ca_path settings points here
-      dir_permissions: 744,
-      file_permissions: 644,
-      after: {
-        env: {
-          CAPI_BINARY_ROOT: '/home/' + $.ssh_config.user + '/bin'
-        },
-        cmd: [
-          'sh/capiscripts/unpack_ca.sh',
-        ],
-      },
-    },
-    up_capiparquet_binary: {
-      src: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/linux/arm64/capiparquet.gz',
-      dst: '/home/' + $.ssh_config.user + '/bin',
-      dir_permissions: 744,
-      file_permissions: 644,
-      after: {
-        env: {
-          CAPI_BINARY: '/home/' + $.ssh_config.user + '/bin/capiparquet',
-        },
-        cmd: [
-          'sh/capiscripts/unpack_capi_binary.sh',
-        ],
-      },
-    },
-    up_daemon_binary: {
-      src: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/linux/' + architecture + '/capidaemon.gz',
-      dst: '/home/' + $.ssh_config.user + '/bin',
-      dir_permissions: 744,
-      file_permissions: 644,
-      after: {
-        env: {
-          CAPI_BINARY: '/home/' + $.ssh_config.user + '/bin/capidaemon',
-        },
-        cmd: [
-          'sh/capiscripts/unpack_capi_binary.sh',
-        ],
-      },
-    },
-    up_daemon_env_config: {
-      src: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/ca/pkg/exe/daemon/capidaemon.json',
-      dst: '/home/' + $.ssh_config.user + '/bin',
-      dir_permissions: 744,
-      file_permissions: 644,
-      after: {},
-    },
-    up_toolbelt_binary: {
-      src: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/linux/' + architecture + '/capitoolbelt.gz',
-      dst: '/home/' + $.ssh_config.user + '/bin',
-      dir_permissions: 744,
-      file_permissions: 644,
-      after: {
-        env: {
-          CAPI_BINARY: '/home/' + $.ssh_config.user + '/bin/capitoolbelt',
-        },
-        cmd: [
-          'sh/capiscripts/unpack_capi_binary.sh',
-        ],
-      },
-    },
-    up_toolbelt_env_config: {
-      src: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/ca/pkg/exe/toolbelt/capitoolbelt.json',
-      dst: '/home/' + $.ssh_config.user + '/bin',
-      dir_permissions: 744,
-      file_permissions: 644,
-      after: {},
-    },
-    up_ui: {
-      src: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/ui/build/all.tgz',
-      dst: '/home/' + $.ssh_config.user + '/ui',
-      dir_permissions: 755,
-      file_permissions: 644,
-      after: {
-        env: {
-          UI_ROOT: '/home/' + $.ssh_config.user + '/ui',
-        },
-        cmd: [
-          'sh/capiscripts/unpack_ui.sh',
-        ],
-      },
-
-    },
-    up_webapi_binary: {
-      src: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/linux/' + architecture + '/capiwebapi.gz',
-      dst: '/home/' + $.ssh_config.user + '/bin',
-      dir_permissions: 744,
-      file_permissions: 644,
-      after: {
-        env: {
-          CAPI_BINARY: '/home/' + $.ssh_config.user + '/bin/capiwebapi',
-        },
-        cmd: [
-          'sh/capiscripts/unpack_capi_binary.sh',
-        ],
-      },
-    },
-    up_webapi_env_config: {
-      src: '{CAPIDEPLOY_CAPILLARIES_ROOT_DIR}/build/ca/pkg/exe/webapi/capiwebapi.json',
-      dst: '/home/' + $.ssh_config.user + '/bin',
-      dir_permissions: 744,
-      file_permissions: 644,
-      after: {},
-    },
-  },
-  file_groups_down: {
-    down_capi_logs: {
-      src: '/var/log/capidaemon/',
-      dst: './tmp/capi_logs',
-    },
-  },
 
   // Only alphanumeric characters allowed in instance names! No underscores, no dashes, no dots, no spaces - nada.
 
@@ -452,7 +318,6 @@
       uses_ssh_config_external_ip_address: true,
       flavor: instance_flavor_bastion,
       image: instance_image_name,
-      availability_zone: instance_availability_zone,
       subnet_type: bastion_subnet_type,
       volumes: {
         'log': {
@@ -467,6 +332,11 @@
       },
       service: {
         env: {
+          CAPILLARIES_RELEASE_URL: '{CAPIDELOY_CAPILLARIES_RELEASE_URL}',
+          OS_ARCH: os_arch,
+          IAM_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID}',
+          IAM_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY}',
+          IAM_AWS_DEFAULT_REGION: '{CAPIDEPLOY_IAM_AWS_DEFAULT_REGION}',
           AMQP_URL: 'amqp://{CAPIDEPLOY_RABBITMQ_USER_NAME}:{CAPIDEPLOY_RABBITMQ_USER_PASS}@' + rabbitmq_ip + '/',
           CASSANDRA_HOSTS: cassandra_hosts,
           PROMETHEUS_IP: prometheus_ip,
@@ -483,11 +353,16 @@
             'sh/common/increase_ssh_connection_limit.sh',
             'sh/prometheus/install_node_exporter.sh',
             'sh/nginx/install.sh',
+            'sh/ca/install.sh',
+            'sh/common/iam_aws_credentials.sh',
+            'sh/toolbelt/install.sh',
+            'sh/webapi/install.sh',
+            'sh/ui/install.sh',
           ],
           config: [
             'sh/prometheus/config_node_exporter.sh',
-            'sh/rsyslog/config_capidaemon_log_receiver.sh',
-            'sh/logrotate/config_capidaemon_logrotate_bastion.sh',
+            'sh/rsyslog/config_catchall_log_receiver.sh',
+            'sh/logrotate/config_bastion.sh',
             'sh/toolbelt/config.sh',
             'sh/webapi/config.sh',
             'sh/ui/config.sh',
@@ -505,16 +380,6 @@
           ],
         },
       },
-      applicable_file_groups: [
-        'up_webapi_binary',
-        'up_webapi_env_config',
-        'up_toolbelt_binary',
-        'up_toolbelt_env_config',
-        'up_capiparquet_binary',
-        'up_ca',
-        'up_ui',
-        'down_capi_logs',
-      ],
     },
   },
 
@@ -527,7 +392,6 @@
       ip_address: rabbitmq_ip,
       flavor: instance_flavor_rabbitmq,
       image: instance_image_name,
-      availability_zone: instance_availability_zone,
       subnet_type: 'private',
       service: {
         env: {
@@ -567,7 +431,6 @@
       ip_address: prometheus_ip,
       flavor: instance_flavor_prometheus,
       image: instance_image_name,
-      availability_zone: instance_availability_zone,
       subnet_type: 'private',
       service: {
         env: {
@@ -605,7 +468,6 @@
       ip_address: e.ip_address,
       flavor: instance_flavor_cassandra,
       image: instance_image_name,
-      availability_zone: instance_availability_zone,
       subnet_type: 'private',
       service: {
         env: {
@@ -621,14 +483,16 @@
             'sh/common/replace_nameserver.sh',
             'sh/prometheus/install_node_exporter.sh',
             'sh/cassandra/install.sh',
-            'sh/common/attach_nvme.sh', // must run after Cassandra install
           ],
           config: [
+            'sh/logrotate/config_cassandra.sh',
             'sh/prometheus/config_node_exporter.sh',
             'sh/cassandra/config.sh',
+            'sh/rsyslog/config_cassandra_log_sender.sh',
           ],
           start: [
             'sh/cassandra/start.sh',
+            'sh/rsyslog/restart.sh', // It's stupid, but on AWS machines it's required, otherwise the log is not picked up when it appears.
           ],
           stop: [
             'sh/cassandra/stop.sh',
@@ -653,10 +517,14 @@
       ip_address: e.ip_address,
       flavor: instance_flavor_daemon,
       image: instance_image_name,
-      availability_zone: instance_availability_zone,
       subnet_type: 'private',
       service: {
         env: {
+          CAPILLARIES_RELEASE_URL: '{CAPIDELOY_CAPILLARIES_RELEASE_URL}',
+          OS_ARCH: os_arch,
+          IAM_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID}',
+          IAM_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY}',
+          IAM_AWS_DEFAULT_REGION: '{CAPIDEPLOY_IAM_AWS_DEFAULT_REGION}',
           AMQP_URL: 'amqp://{CAPIDEPLOY_RABBITMQ_USER_NAME}:{CAPIDEPLOY_RABBITMQ_USER_PASS}@' + rabbitmq_ip + '/',
           CASSANDRA_HOSTS: cassandra_hosts,
           DAEMON_THREAD_POOL_SIZE: DEFAULT_DAEMON_THREAD_POOL_SIZE,
@@ -670,27 +538,25 @@
             'sh/common/replace_nameserver.sh',
             "sh/daemon/install.sh",
             'sh/prometheus/install_node_exporter.sh',
+            'sh/common/iam_aws_credentials.sh',
+            'sh/ca/install.sh',
+            'sh/daemon/install.sh',
           ],
           config: [
-            'sh/logrotate/config_capidaemon_logrotate_daemon.sh',
+            'sh/logrotate/config_capidaemon.sh',
             'sh/prometheus/config_node_exporter.sh',
             'sh/daemon/config.sh',
             'sh/rsyslog/config_capidaemon_log_sender.sh', // This should go after daemon/config.sh, otherwise rsyslog sender does not pick up /var/log/capidaemon/capidaemon.log
           ],
           start: [
             'sh/daemon/start.sh',
-            'sh/rsyslog/restart.sh', // It's stupid, but on AWS machines it's required, otherwise capidaemon.log is notpicked up whenit appears.
+            'sh/rsyslog/restart.sh', // It's stupid, but on AWS machines it's required, otherwise the log is not picked up when it appears.
           ],
           stop: [
             'sh/daemon/stop.sh',
           ],
         },
       },
-      applicable_file_groups: [
-        'up_daemon_binary',
-        'up_daemon_env_config',
-        'up_ca',
-      ],
     }
     for e in std.mapWithIndex(function(i, v) {
       nickname: std.format('daemon%03d', i + 1),

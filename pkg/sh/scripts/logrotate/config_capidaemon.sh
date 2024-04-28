@@ -5,16 +5,16 @@ LOGROTATE_CONFIG_FILE=/etc/logrotate.d/capidaemon_logrotate.conf
 
 sudo rm -f $LOGROTATE_CONFIG_FILE
 sudo tee $LOGROTATE_CONFIG_FILE <<EOF
-/mnt/capi_log/capidaemon/* {
+/var/log/capidaemon/* {
     create 0644 root root
-    daily
+    hourly
     rotate 10
     missingok
     notifempty
     compress
     sharedscripts
     postrotate
-        echo "Log rotated" > /mnt/capi_log/capidaemon/capidaemon.log
+        echo "Log rotated" > /var/log/capidaemon
     endscript
 }
 EOF
