@@ -6,7 +6,7 @@ import (
 )
 
 func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	bastionIp, err := cldaws.AllocateFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, "bastion")
 	if err != nil {
@@ -27,7 +27,7 @@ func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
 }
 
 func (p *AwsDeployProvider) DeleteFloatingIps() (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	err := cldaws.ReleaseFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().PrjPair.Live.SshConfig.ExternalIpAddress)
 	if err != nil {

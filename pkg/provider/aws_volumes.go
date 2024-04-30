@@ -12,7 +12,7 @@ import (
 )
 
 func (p *AwsDeployProvider) CreateVolume(iNickname string, volNickname string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	volDef := p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname]
 	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)
@@ -88,7 +88,7 @@ func awsFinalDeviceNameNitro(suggestedDeviceName string) string {
 }
 
 func (p *AwsDeployProvider) AttachVolume(iNickname string, volNickname string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	volDef := p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname]
 
@@ -155,7 +155,7 @@ func (p *AwsDeployProvider) AttachVolume(iNickname string, volNickname string) (
 }
 
 func (p *AwsDeployProvider) DeleteVolume(iNickname string, volNickname string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	volDef := p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname]
 	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)

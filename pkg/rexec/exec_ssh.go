@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/capillariesio/capideploy/xfer"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"golang.org/x/crypto/ssh"
 )
@@ -41,11 +40,10 @@ elapsed:%0.3f
 }
 
 type SshConfigDef struct {
-	ExternalIpAddress  string `json:"external_ip_address"` // Bastion
-	Port               int    `json:"port"`
-	User               string `json:"user"`
-	PrivateKeyPath     string `json:"private_key_path"`
-	PrivateKeyPassword string `json:"private_key_password"`
+	ExternalIpAddress string `json:"external_ip_address"` // Bastion
+	Port              int    `json:"port"`
+	User              string `json:"user"`
+	PrivateKeyPath    string `json:"private_key_path"`
 }
 
 type TunneledSshClient struct {
@@ -72,10 +70,9 @@ func (tsc *TunneledSshClient) Close() {
 
 // Our jumphost implementation
 func NewTunneledSshClient(sshConfig *SshConfigDef, ipAddress string) (*TunneledSshClient, error) {
-	bastionSshClientConfig, err := xfer.NewSshClientConfig(
+	bastionSshClientConfig, err := NewSshClientConfig(
 		sshConfig.User,
-		sshConfig.PrivateKeyPath,
-		sshConfig.PrivateKeyPassword)
+		sshConfig.PrivateKeyPath)
 	if err != nil {
 		return nil, err
 	}
@@ -104,10 +101,9 @@ func NewTunneledSshClient(sshConfig *SshConfigDef, ipAddress string) (*TunneledS
 			return nil, fmt.Errorf("dial to internal URL %s failed: %s", internalUrl, err.Error())
 		}
 
-		tunneledSshClientConfig, err := xfer.NewSshClientConfig(
+		tunneledSshClientConfig, err := NewSshClientConfig(
 			sshConfig.User,
-			sshConfig.PrivateKeyPath,
-			sshConfig.PrivateKeyPassword)
+			sshConfig.PrivateKeyPath)
 		if err != nil {
 			return nil, err
 		}
@@ -154,8 +150,13 @@ func ExecSsh(sshConfig *SshConfigDef, ipAddress string, cmd string, envVars map[
 	// TODO: it would be nice to have an execution timeout
 
 	runStartTime := time.Now()
-	err = session.Run(cmd)
+	err = session.Run(cmdBuilder.String())
 	elapsed := time.Since(runStartTime).Seconds()
+	if err == nil {
+		if len(stderr.String()) > 0 {
+			err = fmt.Errorf("%s", stderr.String())
+		}
+	}
 
 	er := ExecResult{cmd, stdout.String(), stderr.String(), elapsed, err}
 	return er

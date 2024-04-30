@@ -5,13 +5,14 @@ if [ "$INTERNAL_BASTION_IP" = "" ]; then
   exit 1
 fi
 
-RSYSLOG_CAPIDAEMON_CONFIG_FILE=/etc/rsyslog.d/capidaemon_sender.conf
+sudo chmod 644 /var/log/rabbitmq/*
+RSYSLOG_CAPIDAEMON_CONFIG_FILE=/etc/rsyslog.d/rabbitmq_sender.conf
 
 sudo rm -f $RSYSLOG_CAPIDAEMON_CONFIG_FILE
 
 sudo tee $RSYSLOG_CAPIDAEMON_CONFIG_FILE <<EOF
 module(load="imfile")
-input(type="imfile" File="/var/log/capidaemon/capidaemon.log" Tag="capidaemon" Severity="info" ruleset="udp_bastion")
+input(type="imfile" File="/var/log/rabbitmq/rabbit@ip-10-5-0-5.log" Tag="rabbitmq" Severity="info" ruleset="udp_bastion")
 ruleset(name="udp_bastion") {action(type="omfwd" target="$INTERNAL_BASTION_IP" Port="514" Protocol="udp") }
 EOF
 

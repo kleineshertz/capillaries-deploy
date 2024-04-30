@@ -6,7 +6,7 @@ if [ "$SSH_USER" = "" ]; then
 fi
 
 if [ "$CAPILLARIES_RELEASE_URL" = "" ]; then
-  echo Error, missing: CAPIDEPLOY_CAPILLARIES_RELEASE_URL=https://capillaries-release.s3.us-east-1.amazonaws.com/latest
+  echo Error, missing: CAPILLARIES_RELEASE_URL=https://capillaries-release.s3.us-east-1.amazonaws.com/latest
   exit 1
 fi
 
@@ -20,12 +20,12 @@ if [ ! -d /home/$SSH_USER/bin ]; then
 fi
 
 cd /home/$SSH_USER/bin
-curl -LO $CAPILLARIES_RELEASE_URL/$OS_ARCH/$CAPI_BINARY.gz
+curl -LOs $CAPILLARIES_RELEASE_URL/$OS_ARCH/$CAPI_BINARY.gz
 if [ "$?" -ne "0" ]; then
     echo "Cannot download $CAPILLARIES_RELEASE_URL/$OS_ARCH/$CAPI_BINARY.gz to /home/$SSH_USER/bin"
     exit $?
 fi
-curl -LO $CAPILLARIES_RELEASE_URL/$OS_ARCH/$CAPI_BINARY.json
+curl -LOs $CAPILLARIES_RELEASE_URL/$OS_ARCH/$CAPI_BINARY.json
 if [ "$?" -ne "0" ]; then
     echo "Cannot download from $CAPILLARIES_RELEASE_URL/$OS_ARCH/$CAPI_BINARY.json to /home/$SSH_USER/bin"
     exit $?

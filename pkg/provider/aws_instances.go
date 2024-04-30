@@ -3,12 +3,13 @@ package provider
 import (
 	"fmt"
 
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 )
 
 func (p *AwsDeployProvider) HarvestInstanceTypesByFlavorNames(flavorMap map[string]string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	for flavorName := range flavorMap {
 		instanceType, err := cldaws.GetInstanceType(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, flavorName)
@@ -21,7 +22,7 @@ func (p *AwsDeployProvider) HarvestInstanceTypesByFlavorNames(flavorMap map[stri
 }
 
 func (p *AwsDeployProvider) HarvestImageIdsByImageNames(imageMap map[string]string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	for imageId := range imageMap {
 		checkedImageId, err := cldaws.VerifyImageId(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
@@ -34,7 +35,7 @@ func (p *AwsDeployProvider) HarvestImageIdsByImageNames(imageMap map[string]stri
 }
 
 func (p *AwsDeployProvider) VerifyKeypairs(keypairMap map[string]struct{}) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	for keypairName := range keypairMap {
 		err := cldaws.VerifyKeypair(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, keypairName)
@@ -46,7 +47,7 @@ func (p *AwsDeployProvider) VerifyKeypairs(keypairMap map[string]struct{}) (l.Lo
 }
 
 func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string, instanceTypeString string, imageId string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
 
 	hostName := p.GetCtx().PrjPair.Live.Instances[iNickname].HostName
 	externalIpAddress := p.GetCtx().PrjPair.Live.Instances[iNickname].ExternalIpAddress
@@ -65,14 +66,14 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 
 	// Check if the instance already exists
 
-	foundInstanceIdByName, err := cldaws.GetInstanceIdByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, hostName)
+	foundInstanceIdByName, foundInstanceStateByName, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, hostName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
 	if p.GetCtx().PrjPair.Live.Instances[iNickname].Id == "" {
 		// If it was already created, save it for future use, but do not create
-		if foundInstanceIdByName != "" {
+		if foundInstanceIdByName != "" && (foundInstanceStateByName == types.InstanceStateNameRunning || foundInstanceStateByName == types.InstanceStateNamePending) {
 			lb.Add(fmt.Sprintf("instance %s(%s) already there, updating project", hostName, foundInstanceIdByName))
 			p.GetCtx().PrjPair.SetInstanceId(iNickname, foundInstanceIdByName)
 			return lb.Complete(nil)
@@ -124,7 +125,7 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 		return lb.Complete(err)
 	}
 
-	p.GetCtx().PrjPair.Live.Instances[iNickname].Id = instanceId
+	p.GetCtx().PrjPair.SetInstanceId(iNickname, instanceId)
 
 	if p.GetCtx().PrjPair.Live.Instances[iNickname].ExternalIpAddress != "" {
 		_, err = cldaws.AssignAwsFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
@@ -138,19 +139,43 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 }
 
 func (p *AwsDeployProvider) DeleteInstance(iNickname string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
 
-	instanceId := p.GetCtx().PrjPair.Live.Instances[iNickname].Id
-
-	if instanceId == "" {
-		return lb.Complete(fmt.Errorf("instance %s id cannot be empty", iNickname))
+	hostName := p.GetCtx().PrjPair.Live.Instances[iNickname].HostName
+	if hostName == "" {
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: hostName (%s)", hostName))
 	}
 
-	err := cldaws.DeleteInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, instanceId, p.GetCtx().PrjPair.Live.Timeouts.DeleteInstance)
+	foundId, foundState, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, hostName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
+	if p.GetCtx().PrjPair.Live.Instances[iNickname].Id == "" {
+		if foundId != "" && (foundState == types.InstanceStateNameRunning || foundState == types.InstanceStateNamePending) {
+			// Update project, delete found
+			p.GetCtx().PrjPair.SetInstanceId(iNickname, foundId)
+		}
+	} else {
+		if foundId == "" {
+			// Already deleted, update project
+			p.GetCtx().PrjPair.CleanInstance(iNickname)
+		} else if p.GetCtx().PrjPair.Live.Instances[iNickname].Id != foundId {
+			// It is already there, but has different id, complain
+			return lb.Complete(fmt.Errorf("requested instance id %s not matching existing instance id %s", p.GetCtx().PrjPair.Live.Instances[iNickname].Id, foundId))
+		}
+	}
+
+	// At this point, the project contains relevant resource id
+	if p.GetCtx().PrjPair.Live.Instances[iNickname].Id == "" {
+		lb.Add(fmt.Sprintf("will not delete instance %s, nothing to delete", iNickname))
+		return lb.Complete(nil)
+	}
+
+	err = cldaws.DeleteInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().PrjPair.Live.Instances[iNickname].Id, p.GetCtx().PrjPair.Live.Timeouts.DeleteInstance)
+	if err != nil {
+		return lb.Complete(err)
+	}
 	p.GetCtx().PrjPair.CleanInstance(iNickname)
 
 	return lb.Complete(nil)

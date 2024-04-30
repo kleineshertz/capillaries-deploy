@@ -3,7 +3,8 @@ if [ "$PROMETHEUS_NODE_EXPORTER_VERSION" = "" ]; then
  exit 1
 fi
 
-sudo useradd --no-create-home --shell /bin/false node_exporter
+# It may complain if already exists, do not react to stderr
+sudo useradd --no-create-home --shell /bin/false node_exporter 2>/dev/null
 
 if [ "$(uname -p)" == "x86_64" ]; then
 ARCH=amd64
@@ -16,7 +17,7 @@ EXPORTER_DL_FILE=node_exporter-$PROMETHEUS_NODE_EXPORTER_VERSION.linux-$ARCH
 cd ~
 sudo rm -f $EXPORTER_DL_FILE.tar.gz
 echo Downloading https://github.com/prometheus/node_exporter/releases/download/v$PROMETHEUS_NODE_EXPORTER_VERSION/$EXPORTER_DL_FILE.tar.gz ...
-curl -LO https://github.com/prometheus/node_exporter/releases/download/v$PROMETHEUS_NODE_EXPORTER_VERSION/$EXPORTER_DL_FILE.tar.gz
+curl -LOs https://github.com/prometheus/node_exporter/releases/download/v$PROMETHEUS_NODE_EXPORTER_VERSION/$EXPORTER_DL_FILE.tar.gz
 if [ "$?" -ne "0" ]; then
     echo Cannot download, exiting
     exit $?

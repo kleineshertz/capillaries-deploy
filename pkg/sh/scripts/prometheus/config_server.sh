@@ -2,11 +2,11 @@
 # https://www.digitalocean.com/community/tutorials/how-to-install-prometheus-on-ubuntu-16-04
 
 if [ "$PROMETHEUS_TARGETS" = "" ]; then
-  echo "Error, missing: PROMETHEUS_TARGETS=\'localhost:9100\',\'10.5.0.10:9100\'"
+  echo "Error, missing: PROMETHEUS_TARGETS=\'localhost:9100\',\'10.5.1.10:9100\'"
  exit 1
 fi
 
-sudo systemctl stop prometheus
+sudo systemctl stop prometheus 2>/dev/null
 
 PROMETHEUS_YAML_FILE=/etc/prometheus/prometheus.yml
 
@@ -50,7 +50,7 @@ sudo systemctl daemon-reload
 sudo systemctl start prometheus
 sudo systemctl status prometheus
 
-curl http://localhost:9090
+curl -s http://localhost:9090
 if [ "$?" -ne "0" ]; then
     echo Cannot check localhost:9090
     exit $?

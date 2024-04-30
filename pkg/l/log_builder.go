@@ -35,16 +35,20 @@ func AddLogMsg(sb *strings.Builder, logMsg LogMsg) {
 	sb.WriteString(string(logMsg))
 }
 
-func (lb *LogBuilder) AddObject(o any) {
+func (lb *LogBuilder) AddObject(content string, o any) {
+	if !lb.IsVerbose {
+		return
+	}
+	lb.Sb.WriteString(fmt.Sprintf("%s\n", content))
 	if o == nil {
-		lb.Add("nil")
+		lb.Sb.WriteString("nil")
+		return
+	}
+	b, err := json.Marshal(o)
+	if err == nil {
+		lb.Sb.WriteString(string(b) + "\n")
 	} else {
-		b, err := json.Marshal(o)
-		if err != nil {
-			lb.Add(string(b))
-		} else {
-			lb.Add("cannot marshal")
-		}
+		lb.Sb.WriteString(fmt.Sprintf("cannot marshal %T: %s", o, err.Error()))
 	}
 }
 

@@ -15,7 +15,7 @@ func GetPublicIpAllocation(client *ec2.Client, goCtx context.Context, lb *l.LogB
 		return "", fmt.Errorf("empty parameter not allowed: publicIp (%s)", publicIp)
 	}
 	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{PublicIps: []string{publicIp}})
-	lb.AddObject(out)
+	lb.AddObject("DescribeAddresses", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot get public IP %s allocation id: %s", publicIp, err.Error())
 	}
@@ -30,14 +30,14 @@ func GetPublicIpAssoiatedInstance(client *ec2.Client, goCtx context.Context, lb 
 	if publicIp == "" {
 		return "", fmt.Errorf("empty parameter not allowed: publicIp (%s)", publicIp)
 	}
-	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{Filters: []types.Filter{
-		{Name: aws.String("public-ip"), Values: []string{publicIp}}}})
-	lb.AddObject(out)
+	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{PublicIps: []string{publicIp}})
+	//Filters: []types.Filter{{Name: aws.String("public-ip"), Values: []string{publicIp}}}})
+	lb.AddObject("DescribeAddresses", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot check public IP instance id %s:%s", publicIp, err.Error())
 	}
 
-	if len(out.Addresses) > 0 && *out.Addresses[0].InstanceId != "" {
+	if len(out.Addresses) > 0 && out.Addresses[0].InstanceId != nil {
 		return *out.Addresses[0].InstanceId, nil
 	}
 
@@ -52,7 +52,7 @@ func AllocateFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuil
 		ResourceType: types.ResourceTypeElasticIp,
 		Tags: []types.Tag{
 			{Key: aws.String("Name"), Value: aws.String(publicIpDesc)}}}}})
-	lb.AddObject(out)
+	lb.AddObject("AllocateAddress", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot allocate %s IP address:%s", publicIpDesc, err.Error())
 	}
@@ -72,7 +72,7 @@ func ReleaseFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuild
 
 	if allocationId != "" {
 		outDel, err := client.ReleaseAddress(goCtx, &ec2.ReleaseAddressInput{AllocationId: aws.String(allocationId)})
-		lb.AddObject(outDel)
+		lb.AddObject("ReleaseAddress", outDel)
 		if err != nil {
 			return fmt.Errorf("cannot release IP address %s to delete:%s", publicIp, err.Error())
 		}

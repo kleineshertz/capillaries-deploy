@@ -25,7 +25,7 @@ sudo systemctl daemon-reload
 
 sudo systemctl start node_exporter
 sudo systemctl status node_exporter
-curl http://localhost:9100/metrics > /dev/null
+curl -s http://localhost:9100/metrics > /dev/null
 if [ "$?" -ne "0" ]; then
     echo localhost:9100/metrics
     exit $?

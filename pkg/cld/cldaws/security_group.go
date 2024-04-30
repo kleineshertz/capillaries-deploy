@@ -16,7 +16,7 @@ func GetSecurityGroupIdByName(client *ec2.Client, goCtx context.Context, lb *l.L
 	}
 	out, err := client.DescribeSecurityGroups(goCtx, &ec2.DescribeSecurityGroupsInput{Filters: []types.Filter{{
 		Name: aws.String("tag:Name"), Values: []string{securityGroupName}}}})
-	lb.AddObject(out)
+	lb.AddObject("DescribeSecurityGroups", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot describe security group %s: %s", securityGroupName, err.Error())
 	}
@@ -37,7 +37,7 @@ func CreateSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.LogBui
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeSecurityGroup,
 			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(securityGroupName)}}}}})
-	lb.AddObject(out)
+	lb.AddObject("CreateSecurityGroup", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot create security group %s: %s", securityGroupName, err.Error())
 	}
@@ -54,7 +54,7 @@ func AuthorizeSecurityGroupIngress(client *ec2.Client, goCtx context.Context, lb
 		FromPort:   aws.Int32(port),
 		ToPort:     aws.Int32(port),
 		CidrIp:     aws.String(cidr)})
-	lb.AddObject(out)
+	lb.AddObject("AuthorizeSecurityGroupIngress", out)
 	if err != nil {
 		return fmt.Errorf("cannot authorize security group %s ingress: %s", securityGroupId, err.Error())
 	}
@@ -69,7 +69,7 @@ func DeleteSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.LogBui
 		return fmt.Errorf("empty parameter not allowed: securityGroupId (%s)", securityGroupId)
 	}
 	out, err := client.DeleteSecurityGroup(goCtx, &ec2.DeleteSecurityGroupInput{GroupId: aws.String(securityGroupId)})
-	lb.AddObject(out)
+	lb.AddObject("DeleteSecurityGroup", out)
 	if err != nil {
 		return fmt.Errorf("cannot delete security group %s: %s", securityGroupId, err.Error())
 	}

@@ -20,10 +20,19 @@ func ExecEmbeddedScriptsOnInstance(sshConfig *rexec.SshConfigDef, ipAddress stri
 	}
 	for _, embeddedScriptPath := range embeddedScriptPaths {
 		if err := execEmbeddedScriptOnInstance(sshConfig, lb, ipAddress, embeddedScriptPath, []string{}, envVars, isVerbose); err != nil {
-			lb.Complete(err)
+			return lb.Complete(err)
 		}
 	}
 	return lb.Complete(nil)
+}
+
+func VerifyEmbeddedScriptExists(embeddedScriptPath string) error {
+	f, err := embeddedScriptsFs.Open(embeddedScriptPath)
+	if err != nil {
+		return fmt.Errorf("cannot find embedded script %s: %s", embeddedScriptPath, err.Error())
+	}
+	f.Close()
+	return nil
 }
 
 func execEmbeddedScriptOnInstance(sshConfig *rexec.SshConfigDef, lb *l.LogBuilder, ipAddress string, embeddedScriptPath string, params []string, envVars map[string]string, isVerbose bool) error {

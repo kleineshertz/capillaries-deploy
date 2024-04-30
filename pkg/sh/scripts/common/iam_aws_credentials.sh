@@ -1,3 +1,7 @@
+if [ "$SSH_USER" = "" ]; then
+  echo Error, missing: SSH_USER=ubuntu
+  exit 1
+fi
 if [ "$IAM_AWS_ACCESS_KEY_ID" = "" ]; then
   echo Error, missing: IAM_AWS_ACCESS_KEY_ID=AK...
   exit 1
@@ -12,13 +16,16 @@ if [ "$IAM_AWS_DEFAULT_REGION" = "" ]; then
 fi
 
 # Credentials and config for S3 access
-sudo mkdir '~/.aws'
-sudo cat > ~/.aws/credentials << 'endmsgmarker'
+rm -fR /home/$SSH_USER/.aws
+mkdir -p /home/$SSH_USER/.aws
+
+sudo cat > /home/$SSH_USER/.aws/credentials << 'endmsgmarker'
 [default]
 aws_access_key_id=$IAM_AWS_ACCESS_KEY_ID
 aws_secret_access_key=$IAM_AWS_SECRET_ACCESS_KEY
 endmsgmarker
-sudo cat > ~/.aws/config << 'endmsgmarker'
+
+sudo cat > /home/$SSH_USER/.aws/config << 'endmsgmarker'
 [default]
 region=$IAM_AWS_DEFAULT_REGION
 output=json

@@ -4,12 +4,12 @@
   local dep_name = 'sampleaws001',  // Can be any combination of alphanumeric characters. Make it unique.
   local provider_name = 'aws',
   local subnet_availability_zone = 'us-east-1a', // AWS-specific
-  local cassandra_node_flavor = 'aws.c7g.64', // last number is the number of cores in Cassandra nodes. Daemon cores are 4 times less.
+  local cassandra_node_flavor = 'aws.c7g.16', // last number is the number of cores in Cassandra nodes. Daemon cores are 4 times less.
   local architecture = 'arm64', // amd64 or arm64 
   local cassandra_total_nodes = 4, // Cassandra cluster size - 4,8,16
   local daemon_total_instances = cassandra_total_nodes, // If tasks are CPU-intensive (Python calc), make it equal to cassandra_total_nodes, otherwise cassandra_total_nodes/2
-  local DEFAULT_DAEMON_THREAD_POOL_SIZE = '24', // max daemon_cores*1.5
-  local DEFAULT_DAEMON_DB_WRITERS = '16', // Depends on cassandra latency, reasonable values are 5-20
+  local DEFAULT_DAEMON_THREAD_POOL_SIZE = '6', // max daemon_cores*1.5
+  local DEFAULT_DAEMON_DB_WRITERS = '8', // Depends on cassandra latency, reasonable values are 5-20
 
   // It's unlikely that you need to change anything below this line
 
@@ -109,7 +109,7 @@
   local prometheus_server_version = '2.45.0',
   local jmx_exporter_version = '0.20.0',
 
-  // Used by Prometheus "\\'localhost:9100\\',\\'10.5.0.10:9100\\',\\'10.5.0.5:9100\\',\\'10.5.0.11:9100\\'...",
+  // Used by Prometheus "\\'localhost:9100\\',\\'10.5.1.10:9100\\',\\'10.5.0.5:9100\\',\\'10.5.0.11:9100\\'...",
   local prometheus_targets = std.format("\\'localhost:9100\\',\\'%s:9100\\',\\'%s:9100\\',", [internal_bastion_ip, rabbitmq_ip]) + // Prometheus node exporter
                              "\\'" + std.join(":9100\\',\\'", cassandra_ips) + ":9100\\'," + // Prometheus node exporter
                              "\\'" + std.join(":7070\\',\\'", cassandra_ips) + ":7070\\'," + // JMX exporter
@@ -122,7 +122,6 @@
     // Used in this config
     'CAPIDEPLOY_SSH_USER',
     'CAPIDEPLOY_SSH_PRIVATE_KEY_PATH',
-    'CAPIDEPLOY_SSH_PRIVATE_KEY_PASS',
     'CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME',
     'CAPIDEPLOY_CAPILLARIES_RELEASE_URL',
 
@@ -141,7 +140,6 @@
     port: 22,
     user: '{CAPIDEPLOY_SSH_USER}',
     private_key_path: '{CAPIDEPLOY_SSH_PRIVATE_KEY_PATH}',
-    private_key_password: '{CAPIDEPLOY_SSH_PRIVATE_KEY_PASS}',
   },
   timeouts: {
   },
@@ -332,7 +330,7 @@
       },
       service: {
         env: {
-          CAPILLARIES_RELEASE_URL: '{CAPIDELOY_CAPILLARIES_RELEASE_URL}',
+          CAPILLARIES_RELEASE_URL: '{CAPIDEPLOY_CAPILLARIES_RELEASE_URL}',
           OS_ARCH: os_arch,
           IAM_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID}',
           IAM_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY}',
@@ -349,34 +347,34 @@
         },
         cmd: {
           install: [
-            'sh/common/replace_nameserver.sh',
-            'sh/common/increase_ssh_connection_limit.sh',
-            'sh/prometheus/install_node_exporter.sh',
-            'sh/nginx/install.sh',
-            'sh/ca/install.sh',
-            'sh/common/iam_aws_credentials.sh',
-            'sh/toolbelt/install.sh',
-            'sh/webapi/install.sh',
-            'sh/ui/install.sh',
+            'scripts/common/replace_nameserver.sh',
+            'scripts/common/increase_ssh_connection_limit.sh',
+            'scripts/prometheus/install_node_exporter.sh',
+            'scripts/nginx/install.sh',
+            'scripts/ca/install.sh',
+            'scripts/common/iam_aws_credentials.sh',
+            'scripts/toolbelt/install.sh',
+            'scripts/webapi/install.sh',
+            'scripts/ui/install.sh',
           ],
           config: [
-            'sh/prometheus/config_node_exporter.sh',
-            'sh/rsyslog/config_catchall_log_receiver.sh',
-            'sh/logrotate/config_bastion.sh',
-            'sh/toolbelt/config.sh',
-            'sh/webapi/config.sh',
-            'sh/ui/config.sh',
-            'sh/nginx/config_ui.sh',
-            'sh/nginx/config_prometheus_reverse_proxy.sh',
-            'sh/nginx/config_rabbitmq_reverse_proxy.sh',
+            'scripts/prometheus/config_node_exporter.sh',
+            'scripts/rsyslog/config_catchall_log_receiver.sh',
+            'scripts/logrotate/config_bastion.sh',
+            'scripts/toolbelt/config.sh',
+            'scripts/webapi/config.sh',
+            'scripts/ui/config.sh',
+            'scripts/nginx/config_ui.sh',
+            'scripts/nginx/config_prometheus_reverse_proxy.sh',
+            'scripts/nginx/config_rabbitmq_reverse_proxy.sh',
           ],
           start: [
-            'sh/webapi/start.sh',
-            'sh/nginx/start.sh',
+            'scripts/webapi/start.sh',
+            'scripts/nginx/start.sh',
           ],
           stop: [
-            'sh/webapi/stop.sh',
-            'sh/nginx/stop.sh',
+            'scripts/webapi/stop.sh',
+            'scripts/nginx/stop.sh',
           ],
         },
       },
@@ -395,6 +393,7 @@
       subnet_type: 'private',
       service: {
         env: {
+          INTERNAL_BASTION_IP: internal_bastion_ip,
           PROMETHEUS_NODE_EXPORTER_VERSION: prometheus_node_exporter_version,
           RABBITMQ_ADMIN_NAME: '{CAPIDEPLOY_RABBITMQ_ADMIN_NAME}',
           RABBITMQ_ADMIN_PASS: '{CAPIDEPLOY_RABBITMQ_ADMIN_PASS}',
@@ -403,19 +402,21 @@
         },
         cmd: {
           install: [
-            'sh/common/replace_nameserver.sh',
-            'sh/prometheus/install_node_exporter.sh',
-            'sh/rabbitmq/install.sh',
+            'scripts/common/replace_nameserver.sh',
+            'scripts/prometheus/install_node_exporter.sh',
+            'scripts/rabbitmq/install.sh',
           ],
           config: [
-            'sh/prometheus/config_node_exporter.sh',
-            'sh/rabbitmq/config.sh',
+            'scripts/prometheus/config_node_exporter.sh',
+            'scripts/rabbitmq/config.sh',
+            'scripts/rsyslog/config_rabbitmq_log_sender.sh',
+            'scripts/logrotate/config_rabbitmq.sh',
           ],
           start: [
-            'sh/rabbitmq/start.sh',
+            'scripts/rabbitmq/start.sh',
           ],
           stop: [
-            'sh/rabbitmq/stop.sh',
+            'scripts/rabbitmq/stop.sh',
           ],
         },
       },
@@ -440,19 +441,19 @@
         },
         cmd: {
           install: [
-            'sh/common/replace_nameserver.sh',
-            'sh/prometheus/install_server.sh',
-            'sh/prometheus/install_node_exporter.sh',
+            'scripts/common/replace_nameserver.sh',
+            'scripts/prometheus/install_server.sh',
+            'scripts/prometheus/install_node_exporter.sh',
           ],
           config: [
-            'sh/prometheus/config_server.sh',
-            'sh/prometheus/config_node_exporter.sh',
+            'scripts/prometheus/config_server.sh',
+            'scripts/prometheus/config_node_exporter.sh',
           ],
           start: [
-            'sh/prometheus/start_server.sh',
+            'scripts/prometheus/start_server.sh',
           ],
           stop: [
-            'sh/prometheus/stop_server.sh',
+            'scripts/prometheus/stop_server.sh',
           ],
         },
       },
@@ -471,6 +472,7 @@
       subnet_type: 'private',
       service: {
         env: {
+          INTERNAL_BASTION_IP: internal_bastion_ip,
           CASSANDRA_IP: e.ip_address,
           CASSANDRA_SEEDS: cassandra_seeds,
           INITIAL_TOKEN: e.token,
@@ -480,22 +482,21 @@
         },
         cmd: {
           install: [
-            'sh/common/replace_nameserver.sh',
-            'sh/prometheus/install_node_exporter.sh',
-            'sh/cassandra/install.sh',
+            'scripts/common/replace_nameserver.sh',
+            'scripts/prometheus/install_node_exporter.sh',
+            'scripts/cassandra/install.sh',
           ],
           config: [
-            'sh/logrotate/config_cassandra.sh',
-            'sh/prometheus/config_node_exporter.sh',
-            'sh/cassandra/config.sh',
-            'sh/rsyslog/config_cassandra_log_sender.sh',
+            'scripts/prometheus/config_node_exporter.sh',
+            'scripts/cassandra/config.sh',
+            'scripts/rsyslog/config_cassandra_log_sender.sh',
           ],
           start: [
-            'sh/cassandra/start.sh',
-            'sh/rsyslog/restart.sh', // It's stupid, but on AWS machines it's required, otherwise the log is not picked up when it appears.
+            'scripts/cassandra/start.sh',
+            'scripts/rsyslog/restart.sh', // It's stupid, but on AWS machines it's required, otherwise the log is not picked up when it appears.
           ],
           stop: [
-            'sh/cassandra/stop.sh',
+            'scripts/cassandra/stop.sh',
           ],
         },
       },
@@ -520,7 +521,8 @@
       subnet_type: 'private',
       service: {
         env: {
-          CAPILLARIES_RELEASE_URL: '{CAPIDELOY_CAPILLARIES_RELEASE_URL}',
+          INTERNAL_BASTION_IP: internal_bastion_ip,
+          CAPILLARIES_RELEASE_URL: '{CAPIDEPLOY_CAPILLARIES_RELEASE_URL}',
           OS_ARCH: os_arch,
           IAM_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID}',
           IAM_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY}',
@@ -529,31 +531,30 @@
           CASSANDRA_HOSTS: cassandra_hosts,
           DAEMON_THREAD_POOL_SIZE: DEFAULT_DAEMON_THREAD_POOL_SIZE,
           DAEMON_DB_WRITERS: DEFAULT_DAEMON_DB_WRITERS,
-          INTERNAL_BASTION_IP: internal_bastion_ip,
           PROMETHEUS_NODE_EXPORTER_VERSION: prometheus_node_exporter_version,
           SSH_USER: $.ssh_config.user,
         },
         cmd: {
           install: [
-            'sh/common/replace_nameserver.sh',
-            "sh/daemon/install.sh",
-            'sh/prometheus/install_node_exporter.sh',
-            'sh/common/iam_aws_credentials.sh',
-            'sh/ca/install.sh',
-            'sh/daemon/install.sh',
+            'scripts/common/replace_nameserver.sh',
+            "scripts/daemon/install.sh",
+            'scripts/prometheus/install_node_exporter.sh',
+            'scripts/common/iam_aws_credentials.sh',
+            'scripts/ca/install.sh',
+            'scripts/daemon/install.sh',
           ],
           config: [
-            'sh/logrotate/config_capidaemon.sh',
-            'sh/prometheus/config_node_exporter.sh',
-            'sh/daemon/config.sh',
-            'sh/rsyslog/config_capidaemon_log_sender.sh', // This should go after daemon/config.sh, otherwise rsyslog sender does not pick up /var/log/capidaemon/capidaemon.log
+            'scripts/logrotate/config_capidaemon.sh',
+            'scripts/prometheus/config_node_exporter.sh',
+            'scripts/daemon/config.sh',
+            'scripts/rsyslog/config_capidaemon_log_sender.sh', // This should go after daemon/config.sh, otherwise rsyslog sender does not pick up /var/log/capidaemon/capidaemon.log
           ],
           start: [
-            'sh/daemon/start.sh',
-            'sh/rsyslog/restart.sh', // It's stupid, but on AWS machines it's required, otherwise the log is not picked up when it appears.
+            'scripts/daemon/start.sh',
+            'scripts/rsyslog/restart.sh', // It's stupid, but on AWS machines it's required, otherwise the log is not picked up when it appears.
           ],
           stop: [
-            'sh/daemon/stop.sh',
+            'scripts/daemon/stop.sh',
           ],
         },
       },

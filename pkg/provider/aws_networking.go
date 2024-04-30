@@ -10,7 +10,7 @@ import (
 )
 
 func ensureAwsVpc(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	vpcName := p.GetCtx().PrjPair.Live.Network.Name
 	foundVpcIdByName, err := cldaws.GetVpcIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, vpcName)
@@ -49,7 +49,7 @@ func ensureAwsVpc(p *AwsDeployProvider) (l.LogMsg, error) {
 }
 
 func ensureAwsPrivateSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	subnetDef := p.GetCtx().PrjPair.Live.Network.PrivateSubnet
 
@@ -96,7 +96,7 @@ func ensureAwsPrivateSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
 }
 
 func ensureAwsPublicSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	subnetDef := p.GetCtx().PrjPair.Live.Network.PublicSubnet
 
@@ -143,7 +143,7 @@ func ensureAwsPublicSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
 }
 
 func ensureNatGatewayAndRoutePrivateSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	// Get NAT gateway public IP allocation id
 
@@ -162,17 +162,17 @@ func ensureNatGatewayAndRoutePrivateSubnet(p *AwsDeployProvider) (l.LogMsg, erro
 
 	natGatewayName := p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayName
 	if natGatewayName == "" {
-		return lb.Complete(fmt.Errorf("natgw name cannot be empty"))
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: natGatewayName (%s)", natGatewayName))
 	}
 
-	foundNatGatewayIdByName, err := cldaws.GetNatGatewayIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, natGatewayName)
+	foundNatGatewayIdByName, foundNatGatewayStateByName, err := cldaws.GetNatGatewayIdAndStateByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, natGatewayName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
 	if p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId == "" {
 		// If it was already created, save it for future use, but do not create
-		if foundNatGatewayIdByName != "" {
+		if foundNatGatewayIdByName != "" && foundNatGatewayStateByName == types.NatGatewayStateAvailable {
 			lb.Add(fmt.Sprintf("nat gateway %s(%s) already there, updating project", natGatewayName, foundNatGatewayIdByName))
 			p.GetCtx().PrjPair.SetNatGatewayId(foundNatGatewayIdByName)
 		}
@@ -184,6 +184,11 @@ func ensureNatGatewayAndRoutePrivateSubnet(p *AwsDeployProvider) (l.LogMsg, erro
 			// It is already there, but has different id, complain
 			return lb.Complete(fmt.Errorf("requested nat gateway %s(%s) not matching existing nat gateway id %s", natGatewayName, p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId, foundNatGatewayIdByName))
 		}
+	}
+
+	if foundNatGatewayStateByName != types.NatGatewayStateAvailable {
+		p.GetCtx().PrjPair.SetNatGatewayId("")
+		lb.Add(fmt.Sprintf("nat gateway %s(%s) has bad state, re-creating", natGatewayName, foundNatGatewayIdByName))
 	}
 
 	// Create NAT gateway in the public subnet if needed
@@ -232,11 +237,11 @@ func ensureNatGatewayAndRoutePrivateSubnet(p *AwsDeployProvider) (l.LogMsg, erro
 }
 
 func ensureInternetGatewayAndRoutePublicSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	routerName := p.GetCtx().PrjPair.Live.Network.Router.Name
 	if routerName == "" {
-		return lb.Complete(fmt.Errorf("internet gateway (router) name cannot be empty"))
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: routerName (%s)", routerName))
 	}
 
 	// Get internet gateway (router) by name
@@ -328,61 +333,69 @@ func ensureInternetGatewayAndRoutePublicSubnet(p *AwsDeployProvider) (l.LogMsg, 
 }
 
 func detachAndDeleteInternetGateway(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	internetGatewayName := p.GetCtx().PrjPair.Live.Network.Router.Name
 	if internetGatewayName == "" {
-		lb.Add("internet gateway (router) name empty, nothing to delete")
-		return lb.Complete(nil)
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: internetGatewayName (%s)", internetGatewayName))
 	}
 
-	// Check if it's there
-
-	foundRouterIdByName, err := cldaws.GetInternetGatewayIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, internetGatewayName)
+	foundId, err := cldaws.GetInternetGatewayIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, internetGatewayName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	if foundRouterIdByName == "" {
-		lb.Add(fmt.Sprintf("network gateway (router) %s not found, nothing to delete", internetGatewayName))
-		p.GetCtx().PrjPair.SetRouterId("")
-		return lb.Complete(err)
+	if p.GetCtx().PrjPair.Live.Network.Router.Id == "" {
+		if foundId != "" {
+			// Update project, delete found
+			p.GetCtx().PrjPair.SetRouterId(foundId)
+		}
+	} else {
+		if foundId == "" {
+			// Already deleted, update project
+			p.GetCtx().PrjPair.SetRouterId("")
+		} else if p.GetCtx().PrjPair.Live.Network.Router.Id != foundId {
+			// It is already there, but has different id, complain
+			return lb.Complete(fmt.Errorf("requested router id %s not matching existing router id %s", p.GetCtx().PrjPair.Live.Network.Router, foundId))
+		}
 	}
 
-	if p.GetCtx().PrjPair.Live.Network.Router.Id != "" &&
-		foundRouterIdByName != p.GetCtx().PrjPair.Live.Network.Router.Id {
-		return lb.Complete(fmt.Errorf("network gateway (router) %s not found, but another network gateway with this name found (id %s), not sure what to delete", p.GetCtx().PrjPair.Live.Network.Router.Name, foundRouterIdByName))
+	// At this point, the project contains relevant resource id
+	if p.GetCtx().PrjPair.Live.Network.Router.Id == "" {
+		lb.Add(fmt.Sprintf("will not delete router %s, nothing to delete", internetGatewayName))
+		return lb.Complete(nil)
 	}
 
 	// Is it attached to a vpc? If yes, detach it.
 
-	attachedVpcId, attachmentState, err := cldaws.GetInternetGatewayVpcAttachmentById(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundRouterIdByName)
+	attachedVpcId, attachmentState, err := cldaws.GetInternetGatewayVpcAttachmentById(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundId)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
+	// NOTE: for unknown reason, I am getting "available" instead of "attached" here, so let's embrace it
 	if attachedVpcId != "" &&
-		(attachmentState == types.AttachmentStatusAttached || attachmentState == types.AttachmentStatusAttaching) {
+		(attachmentState == types.AttachmentStatusAttached || attachmentState == types.AttachmentStatusAttaching || string(attachmentState) == "available") {
 
 		if attachedVpcId != p.GetCtx().PrjPair.Live.Network.Id {
-			return lb.Complete(fmt.Errorf("will not detach internet gateway (router) %s from vpc (network) %s: this is not the original vpc it is supposed to be attached to - %s", foundRouterIdByName, p.GetCtx().PrjPair.Live.Network.Id))
+			return lb.Complete(fmt.Errorf("will not detach internet gateway (router) %s from vpc (network) %s: this is not the original vpc it is supposed to be attached to - %s", foundId, attachedVpcId, p.GetCtx().PrjPair.Live.Network.Id))
 		}
 
 		// This may potentially throw:
 		// Network vpc-... has some mapped public address(es). Please unmap those public address(es) before detaching the gateway.
 		// if we do not wait for NAT gateway to be deleted completely
-		err := cldaws.DetachInternetGatewayFromVpc(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundRouterIdByName, attachedVpcId)
+		err := cldaws.DetachInternetGatewayFromVpc(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundId, attachedVpcId)
 		if err != nil {
 			return lb.Complete(err)
 		}
-		lb.Add(fmt.Sprintf("detached internet gateway (router) %s from vpc %s", foundRouterIdByName, attachedVpcId))
+		lb.Add(fmt.Sprintf("detached internet gateway (router) %s from vpc %s", foundId, attachedVpcId))
 	} else {
-		lb.Add(fmt.Sprintf("internet gateway (router) %s was not attached, no need to detach", foundRouterIdByName))
+		lb.Add(fmt.Sprintf("internet gateway (router) %s was not attached, no need to detach", foundId))
 	}
 
 	// Delete
 
-	err = cldaws.DeleteInternetGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundRouterIdByName)
+	err = cldaws.DeleteInternetGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundId)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -392,63 +405,86 @@ func detachAndDeleteInternetGateway(p *AwsDeployProvider) (l.LogMsg, error) {
 }
 
 func checkAndDeleteNatGateway(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	// Are we about to delete a proper NAT gateway?
 
 	natGatewayName := p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayName
 	if natGatewayName == "" {
-		return lb.Complete(fmt.Errorf(fmt.Sprintf("nat gateway name cannot be empty")))
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: natGatewayName (%s)", natGatewayName))
 	}
-	natGatewayIdByName, err := cldaws.GetNatGatewayIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, natGatewayName)
+	foundId, foundState, err := cldaws.GetNatGatewayIdAndStateByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, natGatewayName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	if natGatewayIdByName == "" {
-		if p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId != "" {
-			lb.Add(fmt.Sprintf("nat gateway %s does not exist, updating the project to clean stored id for it", natGatewayName))
-			p.GetCtx().PrjPair.SetNatGatewayId("")
-		} else {
-			lb.Add(fmt.Sprintf("nat gateway %s does not exist, and the stored id for it is empty, no need to delete", natGatewayName))
+	if p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId == "" {
+		if foundId != "" &&
+			(foundState == types.NatGatewayStateAvailable ||
+				foundState == types.NatGatewayStateFailed ||
+				foundState == types.NatGatewayStatePending) {
+			// Update project, delete found
+			p.GetCtx().PrjPair.SetNatGatewayId(foundId)
 		}
-		return lb.Complete(nil)
 	} else {
-		if p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId != natGatewayIdByName {
-			return lb.Complete(fmt.Errorf("nat gateway %s has id %s, but the projet has id %s, not sure what to delete", natGatewayName, natGatewayIdByName, p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId))
+		if foundId == "" {
+			// Already deleted, update project
+			p.GetCtx().PrjPair.SetNatGatewayId("")
+		} else if p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId != foundId {
+			// It is already there, but has different id, complain
+			return lb.Complete(fmt.Errorf("requested nat gateway id %s not matching existing nat gateway id %s", p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId, foundId))
 		}
 	}
 
-	// Delete
+	// At this point, the project contains relevant resource id
+	if p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId == "" {
+		lb.Add(fmt.Sprintf("will not delete nat gateway %s, nothing to delete", natGatewayName))
+		return lb.Complete(nil)
+	}
 
-	err = cldaws.DeleteNatGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, natGatewayIdByName, p.GetCtx().PrjPair.Live.Timeouts.DeleteNatGateway)
+	err = cldaws.DeleteNatGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundId, p.GetCtx().PrjPair.Live.Timeouts.DeleteNatGateway)
 	if err != nil {
 		return lb.Complete(err)
 	}
+
+	p.GetCtx().PrjPair.SetNatGatewayId("")
 
 	return lb.Complete(nil)
 }
 
 func deleteAwsPrivateSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	subnetName := p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Name
-	foundSubnetIdByName, err := cldaws.GetSubnetIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, subnetName)
+	if subnetName == "" {
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: subnetName (%s)", subnetName))
+	}
+	foundId, err := cldaws.GetSubnetIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, subnetName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	if foundSubnetIdByName == "" {
-		lb.Add(fmt.Sprintf("private subnet %s not found, nothing to delete", subnetName))
-		p.GetCtx().PrjPair.SetPrivateSubnetId("")
+	if p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id == "" {
+		if foundId != "" {
+			// Update project, delete found
+			p.GetCtx().PrjPair.SetPrivateSubnetId(foundId)
+		}
+	} else {
+		if foundId == "" {
+			// Already deleted, update project
+			p.GetCtx().PrjPair.SetPrivateSubnetId("")
+		} else if p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id != foundId {
+			// It is already there, but has different id, complain
+			return lb.Complete(fmt.Errorf("requested private subnet id %s not matching existing private subnet id %s", p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id, foundId))
+		}
+	}
+	// At this point, the project contains relevant resource id
+	if p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id == "" {
+		lb.Add(fmt.Sprintf("will not delete private subnet %s, nothing to delete", subnetName))
 		return lb.Complete(nil)
 	}
 
-	if p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id != "" && foundSubnetIdByName != p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id {
-		return lb.Complete(fmt.Errorf("private subnet with name %s and id %d found, but it does not match the id in the project - %s, not sure what to delete", subnetName, foundSubnetIdByName, p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id))
-	}
-
-	err = cldaws.DeleteSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundSubnetIdByName)
+	err = cldaws.DeleteSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundId)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -459,25 +495,40 @@ func deleteAwsPrivateSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
 }
 
 func deleteAwsPublicSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
-	subnetName := p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Name
-	foundSubnetIdByName, err := cldaws.GetSubnetIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, subnetName)
+	subnetName := p.GetCtx().PrjPair.Live.Network.PublicSubnet.Name
+	if subnetName == "" {
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: subnetName (%s)", subnetName))
+	}
+
+	foundId, err := cldaws.GetSubnetIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, subnetName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	if foundSubnetIdByName == "" {
-		lb.Add(fmt.Sprintf("public subnet %s not found, nothing to delete", subnetName))
-		p.GetCtx().PrjPair.SetPublicSubnetId("")
+	if p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id == "" {
+		if foundId != "" {
+			// Update project, delete found
+			p.GetCtx().PrjPair.SetPublicSubnetId(foundId)
+		}
+	} else {
+		if foundId == "" {
+			// Already deleted, update project
+			p.GetCtx().PrjPair.SetPublicSubnetId("")
+		} else if p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id != foundId {
+			// It is already there, but has different id, complain
+			return lb.Complete(fmt.Errorf("requested public subnet id %s not matching existing public subnet id %s", p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id, foundId))
+		}
+	}
+
+	// At this point, the project contains relevant resource id
+	if p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id == "" {
+		lb.Add(fmt.Sprintf("will not delete public subnet %s, nothing to delete", subnetName))
 		return lb.Complete(nil)
 	}
 
-	if p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id != "" && foundSubnetIdByName != p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id {
-		return lb.Complete(fmt.Errorf("public subnet with name %s and id %d found, but it does not match the id in the project - %s, not sure what to delete", subnetName, foundSubnetIdByName, p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id))
-	}
-
-	err = cldaws.DeleteSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundSubnetIdByName)
+	err = cldaws.DeleteSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundId)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -488,22 +539,36 @@ func deleteAwsPublicSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
 }
 
 func checkAndDeleteAwsVpcWithRouteTable(p *AwsDeployProvider) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(cldaws.CurAwsFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	vpcName := p.GetCtx().PrjPair.Live.Network.Name
-	foundVpcIdByName, err := cldaws.GetVpcIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, vpcName)
+	if vpcName == "" {
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: vpcName (%s)", vpcName))
+	}
+	foundId, err := cldaws.GetVpcIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, vpcName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	if foundVpcIdByName == "" {
-		lb.Add(fmt.Sprintf("vpc (network) %s not found, nothing to delete", vpcName))
-		p.GetCtx().PrjPair.SetNetworkId("")
-		return lb.Complete(nil)
+	if p.GetCtx().PrjPair.Live.Network.Id == "" {
+		if foundId != "" {
+			// Update project, delete found
+			p.GetCtx().PrjPair.SetNetworkId(foundId)
+		}
+	} else {
+		if foundId == "" {
+			// Already deleted, update project
+			p.GetCtx().PrjPair.SetNetworkId("")
+		} else if p.GetCtx().PrjPair.Live.Network.Id != foundId {
+			// It is already there, but has different id, complain
+			return lb.Complete(fmt.Errorf("requested vpc id %s not matching existing vpc id %s", p.GetCtx().PrjPair.Live.Network.Id, foundId))
+		}
 	}
 
-	if p.GetCtx().PrjPair.Live.Network.Id != "" && foundVpcIdByName != p.GetCtx().PrjPair.Live.Network.Id {
-		return lb.Complete(fmt.Errorf("vpc (network) %s with id %s found, but the project has id %s, not sure what to delete", vpcName, foundVpcIdByName, p.GetCtx().PrjPair.Live.Network.Id))
+	// At this point, the project contains relevant resource id
+	if p.GetCtx().PrjPair.Live.Network.Id == "" {
+		lb.Add(fmt.Sprintf("will not delete vpc %s, nothing to delete", vpcName))
+		return lb.Complete(nil)
 	}
 
 	if p.GetCtx().PrjPair.Live.Network.PrivateSubnet.RouteTableToNat != "" {
@@ -514,7 +579,7 @@ func checkAndDeleteAwsVpcWithRouteTable(p *AwsDeployProvider) (l.LogMsg, error) 
 		}
 	}
 
-	if err = cldaws.DeleteVpc(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVpcIdByName); err != nil {
+	if err = cldaws.DeleteVpc(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundId); err != nil {
 		return lb.Complete(err)
 	}
 

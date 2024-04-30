@@ -23,7 +23,8 @@ sudo chmod 755 /home/$SSH_USER/ui
 
 sudo ln -s $UI_CONFIG_FILE /etc/nginx/sites-enabled/
 
-sudo nginx -t
+# nginx has a habit to write "syntax is ok" to stderr. Ignore it and rely on the exit code
+sudo nginx -t 2>/dev/null
 if [ "$?" -ne "0" ]; then
     echo nginx config error, exiting
     exit $?

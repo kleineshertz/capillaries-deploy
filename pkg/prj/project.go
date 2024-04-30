@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/capillariesio/capillaries-deploy/pkg/rexec"
+	"github.com/capillariesio/capillaries-deploy/pkg/sh"
 )
 
 type InstancePurpose string
@@ -40,7 +41,7 @@ func (t *ExecTimeouts) InitDefaults() {
 		t.CreateNatGateway = 120
 	}
 	if t.DeleteNatGateway == 0 {
-		t.DeleteNatGateway = 120
+		t.DeleteNatGateway = 180 // It may take AWS a while
 	}
 	if t.CreateNetwork == 0 {
 		t.CreateNetwork = 120
@@ -333,6 +334,25 @@ func (prj *Project) validate() error {
 		return fmt.Errorf("none of the instances is using ssh_config_external_ip, at least one must have it")
 	}
 
+	// Verify that all scripts mentioned in the project are present
+	missingScriptErrorMap := map[string]struct{}{}
+	for _, iDef := range prj.Instances {
+		for _, scriptPath := range iDef.Service.Cmd.Install {
+			if err := sh.VerifyEmbeddedScriptExists(scriptPath); err != nil {
+				missingScriptErrorMap[err.Error()] = struct{}{}
+			}
+		}
+	}
+	if len(missingScriptErrorMap) > 0 {
+		missingScriptErrors := make([]string, len(missingScriptErrorMap))
+		i := 0
+		for err, _ := range missingScriptErrorMap {
+			missingScriptErrors[i] = err
+			i++
+		}
+		return fmt.Errorf("cannot find embedded script(s): %s", strings.Join(missingScriptErrors, ","))
+	}
+
 	return nil
 }
 
@@ -369,11 +389,15 @@ func LoadProject(prjFile string) (*ProjectPair, string, error) {
 	prjString := string(prjBytes)
 
 	envVars := map[string]string{}
+	missingVars := make([]string, 0)
 	for _, envVar := range prjPair.Template.EnvVariablesUsed {
 		envVars[envVar] = os.Getenv(envVar)
 		if envVars[envVar] == "" {
-			return nil, "", fmt.Errorf("cannot load deployment project, missing env variable %s", envVar)
+			missingVars = append(missingVars, envVar)
 		}
+	}
+	if len(missingVars) > 0 {
+		return nil, "", fmt.Errorf("cannot load deployment project, missing env variables:\n%v", strings.Join(missingVars, "\n"))
 	}
 
 	// Replace env vars

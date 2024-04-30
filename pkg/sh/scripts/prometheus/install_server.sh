@@ -25,7 +25,7 @@ PROMETHEUS_DL_FILE=prometheus-$PROMETHEUS_VERSION.linux-$ARCH
 cd ~
 sudo rm -f $PROMETHEUS_DL_FILE.gz
 echo Downloading https://github.com/prometheus/prometheus/releases/download/v$PROMETHEUS_VERSION/$PROMETHEUS_DL_FILE.tar.gz
-curl -LO https://github.com/prometheus/prometheus/releases/download/v$PROMETHEUS_VERSION/$PROMETHEUS_DL_FILE.tar.gz
+curl -LOs https://github.com/prometheus/prometheus/releases/download/v$PROMETHEUS_VERSION/$PROMETHEUS_DL_FILE.tar.gz
 if [ "$?" -ne "0" ]; then
     echo Cannot download, exiting
     exit $?

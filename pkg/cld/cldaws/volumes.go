@@ -22,8 +22,8 @@ init_volume_attachment()
   # Check if file system is already there
   local deviceBlockId=$(blkid -s UUID -o value $deviceName)
   if [ "$deviceBlockId" = "" ]; then
-    # Make file system
-    sudo mkfs.ext4 $deviceName
+    # Make file system (it outputs to stderr, so ignore it)
+    sudo mkfs.ext4 $deviceName 2>/dev/null
     if [ "$?" -ne "0" ]; then
       echo Error $?, cannot make file system
       return $?
@@ -73,7 +73,7 @@ func GetVolumeIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuild
 	}
 	out, err := client.DescribeVolumes(goCtx, &ec2.DescribeVolumesInput{
 		Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{volName}}}})
-	lb.AddObject(out)
+	lb.AddObject("DescribeVolumes", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot describe volume %s: %s", volName, err.Error())
 	}
@@ -88,7 +88,7 @@ func GetVolumeAttachedDeviceById(client *ec2.Client, goCtx context.Context, lb *
 		return "", types.VolumeAttachmentStateDetached, fmt.Errorf("empty parameter not allowed: volId (%s)", volId)
 	}
 	out, err := client.DescribeVolumes(goCtx, &ec2.DescribeVolumesInput{VolumeIds: []string{volId}})
-	lb.AddObject(out)
+	lb.AddObject("DescribeVolumes", out)
 	if err != nil {
 		return "", types.VolumeAttachmentStateDetached, fmt.Errorf("cannot describe volume by id %s: %s", volId, err.Error())
 	}
@@ -125,7 +125,7 @@ func CreateVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeVolume,
 			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(volName)}}}}})
-	lb.AddObject(out)
+	lb.AddObject("CreateVolume", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot create volume %s: %s", volName, err.Error())
 	}
@@ -140,7 +140,7 @@ func AttachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 		VolumeId:   aws.String(volId),
 		InstanceId: aws.String(instanceId),
 		Device:     &suggestedDevice})
-	lb.AddObject(out)
+	lb.AddObject("AttachVolume", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot attach volume %s to instance %s as device %s : %s", volId, instanceId, suggestedDevice, err.Error())
 	}
@@ -176,7 +176,7 @@ func DeleteVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 		return fmt.Errorf("empty parameter not allowed: volId (%s)", volId)
 	}
 	out, err := client.DeleteVolume(goCtx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volId)})
-	lb.AddObject(out)
+	lb.AddObject("DeleteVolume", out)
 	if err != nil {
 		return fmt.Errorf("cannot delete volume %s: %s", volId, err.Error())
 	}

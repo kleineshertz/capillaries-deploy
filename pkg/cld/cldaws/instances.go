@@ -24,9 +24,10 @@ func GetInstanceType(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder
 	if flavorName == "" {
 		return "", fmt.Errorf("empty parameter not allowed: flavorName (%s)", flavorName)
 	}
-	out, err := client.DescribeInstanceTypes(goCtx, &ec2.DescribeInstanceTypesInput{Filters: []types.Filter{
-		{Name: aws.String("instance-type"), Values: []string{flavorName}}}})
-	lb.AddObject(out)
+	out, err := client.DescribeInstanceTypes(goCtx, &ec2.DescribeInstanceTypesInput{
+		InstanceTypes: []types.InstanceType{types.InstanceType(flavorName)}})
+	//Filters: []types.Filter{{Name: aws.String("instance-type"), Values: []string{aws.String(flavorName)}}}})
+	lb.AddObject("DescribeInstanceTypes", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot find flavor %s:%s", flavorName, err.Error())
 	}
@@ -42,7 +43,7 @@ func VerifyImageId(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, 
 	}
 	out, err := client.DescribeImages(goCtx, &ec2.DescribeImagesInput{Filters: []types.Filter{{
 		Name: aws.String("image-id"), Values: []string{imageId}}}})
-	lb.AddObject(out)
+	lb.AddObject("DescribeImages", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot find image %s:%s", imageId, err.Error())
 	}
@@ -58,7 +59,7 @@ func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, 
 	}
 	out, err := client.DescribeKeyPairs(goCtx, &ec2.DescribeKeyPairsInput{Filters: []types.Filter{{
 		Name: aws.String("key-name"), Values: []string{keypairName}}}})
-	lb.AddObject(out)
+	lb.AddObject("DescribeKeyPairs", out)
 	if err != nil {
 		return fmt.Errorf("cannot find keypair %s:%s", keypairName, err.Error())
 	}
@@ -68,23 +69,44 @@ func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, 
 	return nil
 }
 
-func GetInstanceIdByHostName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, hostName string) (string, error) {
+func GetInstanceIdAndStateByHostName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, hostName string) (string, types.InstanceStateName, error) {
 	if hostName == "" {
-		return "", fmt.Errorf("empty parameter not allowed: hostName (%s)", hostName)
+		return "", types.InstanceStateNameTerminated, fmt.Errorf("empty parameter not allowed: hostName (%s)", hostName)
 	}
 	out, err := client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{Filters: []types.Filter{types.Filter{
 		Name: aws.String("tag:Name"), Values: []string{hostName}}}})
-	lb.AddObject(out)
+	lb.AddObject("DescribeInstances", out)
 	if err != nil {
-		return "", fmt.Errorf("cannot find instance %s:%s", hostName, err.Error())
+		return "", types.InstanceStateNameTerminated, fmt.Errorf("cannot find instance %s:%s", hostName, err.Error())
 	}
 	if len(out.Reservations) == 0 {
-		return "", nil
+		return "", types.InstanceStateNameTerminated, nil
 	}
 	if len(out.Reservations[0].Instances) == 0 {
-		return "", fmt.Errorf("found zero instances in reservations[0] for hostname %s", hostName)
+		return "", types.InstanceStateNameTerminated, fmt.Errorf("found zero instances in reservations[0] for hostname %s", hostName)
 	}
-	return *out.Reservations[0].Instances[0].InstanceId, nil
+
+	// If there are more than one instance, we want to return the one which is Running, or at least Pending
+	var instanceId string
+	instanceStateName := types.InstanceStateNameTerminated
+	for resIdx := 0; resIdx < len(out.Reservations); resIdx++ {
+		for instIdx := 0; instIdx < len(out.Reservations[resIdx].Instances); instIdx++ {
+			inst := out.Reservations[resIdx].Instances[instIdx]
+			if inst.State.Name == types.InstanceStateNameRunning {
+				instanceId = *inst.InstanceId
+				instanceStateName = inst.State.Name
+				return instanceId, instanceStateName, nil
+			}
+			if inst.State.Name == types.InstanceStateNamePending {
+				instanceId = *inst.InstanceId
+				instanceStateName = inst.State.Name
+			} else if instanceStateName != types.InstanceStateNamePending {
+				instanceId = *inst.InstanceId
+				instanceStateName = inst.State.Name
+			}
+		}
+	}
+	return instanceId, instanceStateName, nil
 }
 
 func getInstanceStateName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string) (types.InstanceStateName, error) {
@@ -92,7 +114,7 @@ func getInstanceStateName(client *ec2.Client, goCtx context.Context, lb *l.LogBu
 		return "", fmt.Errorf("empty parameter not allowed: instanceId (%s)", instanceId)
 	}
 	out, err := client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{InstanceIds: []string{instanceId}})
-	lb.AddObject(out)
+	lb.AddObject("DescribeInstances", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot find instance %s:%s", instanceId, err.Error())
 	}
@@ -139,7 +161,7 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 			ResourceType: types.ResourceTypeInstance,
 			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(hostName)}},
 		}}})
-	lb.AddObject(runOut)
+	lb.AddObject("RunInstances", runOut)
 	if err != nil {
 		return "", fmt.Errorf("cannot create instance %s: %s", hostName, err.Error())
 	}
@@ -180,7 +202,7 @@ func AssignAwsFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBui
 	out, err := client.AssociateAddress(goCtx, &ec2.AssociateAddressInput{
 		InstanceId: aws.String(instanceId),
 		PublicIp:   aws.String(floatingIp)})
-	lb.AddObject(out)
+	lb.AddObject("AssociateAddress", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot assign public IP %s to %s: %s", floatingIp, instanceId, err.Error())
 	}
@@ -195,7 +217,7 @@ func DeleteInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 		return fmt.Errorf("empty parameter not allowed: instanceId (%s)", instanceId)
 	}
 	out, err := client.TerminateInstances(goCtx, &ec2.TerminateInstancesInput{InstanceIds: []string{instanceId}})
-	lb.AddObject(out)
+	lb.AddObject("TerminateInstances", out)
 	if err != nil {
 		return fmt.Errorf("cannot delete instance %s: %s", instanceId, err.Error())
 	}
@@ -212,7 +234,7 @@ func DeleteInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 		if stateName == types.InstanceStateNameTerminated {
 			break
 		}
-		if stateName != types.InstanceStateNameShuttingDown {
+		if stateName != types.InstanceStateNameShuttingDown && stateName != types.InstanceStateNameRunning {
 			return fmt.Errorf("%s was deleted, but the state is unknown: %s", instanceId, stateName)
 		}
 		if time.Since(startWaitTs).Seconds() > float64(timeoutSeconds) {

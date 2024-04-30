@@ -1,11 +1,11 @@
 # Make it as idempotent as possible, it can be called over and over
 
 # Logrotate
-LOGROTATE_CONFIG_FILE=/etc/logrotate.d/cassandra_logrotate.conf
+LOGROTATE_CONFIG_FILE=/etc/logrotate.d/rabbitmq_logrotate.conf
 
 sudo rm -f $LOGROTATE_CONFIG_FILE
 sudo tee $LOGROTATE_CONFIG_FILE <<EOF
-/var/log/cassandra/* {
+/var/log/rabbitmq/* {
     create 0644 root root
     hourly
     rotate 10
@@ -14,7 +14,7 @@ sudo tee $LOGROTATE_CONFIG_FILE <<EOF
     compress
     sharedscripts
     postrotate
-        echo "Log rotated" > /var/log/cassandra
+        echo "Log rotated" > /var/log/rabbitmq
     endscript
 }
 EOF

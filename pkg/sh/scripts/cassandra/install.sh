@@ -8,17 +8,23 @@ if [ "$NVME_REGEX" = "" ]; then
 fi
 
 echo "deb https://debian.cassandra.apache.org 41x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
-curl https://downloads.apache.org/cassandra/KEYS | sudo apt-key add -
+# apt-key is deprecated. but still working, just silence it
+curl -s https://downloads.apache.org/cassandra/KEYS | sudo apt-key add - 2>/dev/null
 
-sudo apt-get -y update
+# To avoid "Key is stored in legacy trusted.gpg keyring" in stderr
+cd /etc/apt
+sudo cp trusted.gpg trusted.gpg.d
+cd ~
+
+sudo DEBIAN_FRONTEND=noninteractive apt-get -y update
 
 #iostat
-sudo apt-get install -y sysstat
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y sysstat
 
 # Cassandra requires Java 8
-sudo apt-get install -y openjdk-8-jdk openjdk-8-jre
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y openjdk-8-jdk openjdk-8-jre
 
-sudo apt-get install -y cassandra
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y cassandra
 
 sudo systemctl status cassandra
 if [ "$?" -ne "0" ]; then
@@ -27,7 +33,7 @@ if [ "$?" -ne "0" ]; then
 fi
 
 # JMX Exporter
-curl -LO https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/$JMX_EXPORTER_VERSION/jmx_prometheus_javaagent-$JMX_EXPORTER_VERSION.jar
+curl -LOs https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/$JMX_EXPORTER_VERSION/jmx_prometheus_javaagent-$JMX_EXPORTER_VERSION.jar
 if [ "$?" -ne "0" ]; then
     echo Cannot download JMX exporter, exiting
     exit $?
