@@ -7,6 +7,11 @@ if [ "$NVME_REGEX" = "" ]; then
   exit 1
 fi
 
+if [[ "$NVME_REGEX" != nvme* ]]; then
+  echo Error, NVME_REGEX has unexpected format $NVME_REGEX
+  exit 1
+fi
+
 echo "deb https://debian.cassandra.apache.org 41x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
 # apt-key is deprecated. but still working, just silence it
 curl -s https://downloads.apache.org/cassandra/KEYS | sudo apt-key add - 2>/dev/null

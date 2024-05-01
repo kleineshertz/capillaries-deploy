@@ -3,6 +3,7 @@ package cldaws
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -69,44 +70,41 @@ func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, 
 	return nil
 }
 
-func GetInstanceIdAndStateByHostName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, hostName string) (string, types.InstanceStateName, error) {
-	if hostName == "" {
-		return "", types.InstanceStateNameTerminated, fmt.Errorf("empty parameter not allowed: hostName (%s)", hostName)
+func GetInstanceIdAndStateByHostName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instName string) (string, types.InstanceStateName, error) {
+	if instName == "" {
+		return "", types.InstanceStateNameTerminated, fmt.Errorf("empty parameter not allowed: instName (%s)", instName)
 	}
-	out, err := client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{Filters: []types.Filter{types.Filter{
-		Name: aws.String("tag:Name"), Values: []string{hostName}}}})
+	out, err := client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{instName}}}})
 	lb.AddObject("DescribeInstances", out)
 	if err != nil {
-		return "", types.InstanceStateNameTerminated, fmt.Errorf("cannot find instance %s:%s", hostName, err.Error())
+		return "", types.InstanceStateNameTerminated, fmt.Errorf("cannot find instance by name %s:%s", instName, err.Error())
 	}
 	if len(out.Reservations) == 0 {
 		return "", types.InstanceStateNameTerminated, nil
 	}
 	if len(out.Reservations[0].Instances) == 0 {
-		return "", types.InstanceStateNameTerminated, fmt.Errorf("found zero instances in reservations[0] for hostname %s", hostName)
+		return "", types.InstanceStateNameTerminated, fmt.Errorf("found zero instances in reservations[0] for hostinstNamename %s", instName)
 	}
 
 	// If there are more than one instance, we want to return the one which is Running, or at least Pending
 	var instanceId string
-	instanceStateName := types.InstanceStateNameTerminated
+	var instanceStateName string
 	for resIdx := 0; resIdx < len(out.Reservations); resIdx++ {
 		for instIdx := 0; instIdx < len(out.Reservations[resIdx].Instances); instIdx++ {
 			inst := out.Reservations[resIdx].Instances[instIdx]
 			if inst.State.Name == types.InstanceStateNameRunning {
-				instanceId = *inst.InstanceId
-				instanceStateName = inst.State.Name
-				return instanceId, instanceStateName, nil
+				return *inst.InstanceId, inst.State.Name, nil
 			}
 			if inst.State.Name == types.InstanceStateNamePending {
 				instanceId = *inst.InstanceId
-				instanceStateName = inst.State.Name
-			} else if instanceStateName != types.InstanceStateNamePending {
+				instanceStateName = string(inst.State.Name)
+			} else if instanceStateName != string(types.InstanceStateNamePending) {
 				instanceId = *inst.InstanceId
-				instanceStateName = inst.State.Name
+				instanceStateName = string(inst.State.Name)
 			}
 		}
 	}
-	return instanceId, instanceStateName, nil
+	return instanceId, types.InstanceStateName(instanceStateName), nil
 }
 
 func getInstanceStateName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string) (types.InstanceStateName, error) {
@@ -116,21 +114,33 @@ func getInstanceStateName(client *ec2.Client, goCtx context.Context, lb *l.LogBu
 	out, err := client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{InstanceIds: []string{instanceId}})
 	lb.AddObject("DescribeInstances", out)
 	if err != nil {
-		return "", fmt.Errorf("cannot find instance %s:%s", instanceId, err.Error())
+		if strings.Contains(err.Error(), "does not exist") {
+			return "", nil
+		}
+		return "", fmt.Errorf("cannot find instance by id %s:%s", instanceId, err.Error())
 	}
 	if len(out.Reservations) == 0 {
 		return "", nil
 	}
 	if len(out.Reservations[0].Instances) == 0 {
-		return "", fmt.Errorf("found zero instances in reservations[0] for hostname %s", instanceId)
+		return "", fmt.Errorf("found zero instances in reservations[0] for instanceId %s", instanceId)
 	}
-	return out.Reservations[0].Instances[0].State.Name, nil
+
+	for resIdx := 0; resIdx < len(out.Reservations); resIdx++ {
+		for instIdx := 0; instIdx < len(out.Reservations[resIdx].Instances); instIdx++ {
+			inst := out.Reservations[resIdx].Instances[instIdx]
+			if *inst.InstanceId == instanceId {
+				return out.Reservations[resIdx].Instances[instIdx].State.Name, nil
+			}
+		}
+	}
+	return "", nil
 }
 
 func CreateInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 	instanceTypeString string,
 	imageId string,
-	hostName string,
+	instName string,
 	privateIpAddress string,
 	securityGroupId string,
 	rootKeyName string,
@@ -142,12 +152,12 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 		return "", err
 	}
 
-	if imageId == "" || hostName == "" || privateIpAddress == "" || securityGroupId == "" || rootKeyName == "" || subnetId == "" {
-		return "", fmt.Errorf("empty parameter not allowed: imageId (%s), hostName (%s), privateIpAddress (%s), securityGroupId (%s), rootKeyName (%s), subnetId (%s)",
-			imageId, hostName, privateIpAddress, securityGroupId, rootKeyName, subnetId)
+	if imageId == "" || instName == "" || privateIpAddress == "" || securityGroupId == "" || rootKeyName == "" || subnetId == "" {
+		return "", fmt.Errorf("empty parameter not allowed: imageId (%s), instName (%s), privateIpAddress (%s), securityGroupId (%s), rootKeyName (%s), subnetId (%s)",
+			imageId, instName, privateIpAddress, securityGroupId, rootKeyName, subnetId)
 	}
 
-	// NOTE: AWS doesn't allow to specify hostname on creation
+	// NOTE: AWS doesn't allow to specify hostname on creation, it assigns names like "ip-10-5-0-11"
 	runOut, err := client.RunInstances(goCtx, &ec2.RunInstancesInput{
 		InstanceType:     instanceType,
 		ImageId:          aws.String(imageId),
@@ -159,20 +169,20 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 		PrivateIpAddress: aws.String(privateIpAddress),
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeInstance,
-			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(hostName)}},
+			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(instName)}},
 		}}})
 	lb.AddObject("RunInstances", runOut)
 	if err != nil {
-		return "", fmt.Errorf("cannot create instance %s: %s", hostName, err.Error())
+		return "", fmt.Errorf("cannot create instance %s: %s", instName, err.Error())
 	}
 	if len(runOut.Instances) == 0 {
-		return "", fmt.Errorf("got zero instances when creating %s", hostName)
+		return "", fmt.Errorf("got zero instances when creating %s", instName)
 	}
 
 	newId := *runOut.Instances[0].InstanceId
 
 	if newId == "" {
-		return "", fmt.Errorf("aws returned empty instance id for %s", hostName)
+		return "", fmt.Errorf("aws returned empty instance id for %s", instName)
 	}
 
 	startWaitTs := time.Now()
@@ -181,14 +191,17 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 		if err != nil {
 			return "", err
 		}
-		if stateName == types.InstanceStateNameRunning {
-			break
-		}
-		if stateName != types.InstanceStateNamePending {
-			return "", fmt.Errorf("%s(%s) was built, but the status is unknown: %s", hostName, newId, stateName)
+		// If no state name returned - the instance creation has just began, give it some time
+		if stateName != "" {
+			if stateName == types.InstanceStateNameRunning {
+				break
+			}
+			if stateName != types.InstanceStateNamePending {
+				return "", fmt.Errorf("%s(%s) was built, but the status is unknown: %s", instName, newId, stateName)
+			}
 		}
 		if time.Since(startWaitTs).Seconds() > float64(timeoutSeconds) {
-			return "", fmt.Errorf("giving up after waiting for %s(%s) to be created", hostName, newId)
+			return "", fmt.Errorf("giving up after waiting for %s(%s) to be created", instName, newId)
 		}
 		time.Sleep(1 * time.Second)
 	}
@@ -230,6 +243,11 @@ func DeleteInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 		stateName, err := getInstanceStateName(client, goCtx, lb, instanceId)
 		if err != nil {
 			return err
+		}
+
+		// If no state name returned - the instance is gone already (a bit too fast, but possible in theory)
+		if stateName == "" {
+			break
 		}
 		if stateName == types.InstanceStateNameTerminated {
 			break

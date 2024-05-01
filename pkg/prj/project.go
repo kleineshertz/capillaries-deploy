@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/capillariesio/capillaries-deploy/pkg/rexec"
-	"github.com/capillariesio/capillaries-deploy/pkg/sh"
 )
 
 type InstancePurpose string
@@ -78,7 +77,6 @@ type PrivateSubnetDef struct {
 	Name             string `json:"name"`
 	Id               string `json:"id"`
 	Cidr             string `json:"cidr"`
-	AllocationPool   string `json:"allocation_pool"`    // start=192.168.199.2,end=192.168.199.254
 	AvailabilityZone string `json:"availability_zone"`  // AWS only
 	RouteTableToNat  string `json:"route_table_to_nat"` // AWS only
 }
@@ -143,7 +141,7 @@ type PrivateKeyDef struct {
 }
 type InstanceDef struct {
 	Purpose                        string                `json:"purpose"`
-	HostName                       string                `json:"host_name"`
+	InstName                       string                `json:"inst_name"`
 	SecurityGroupNickname          string                `json:"security_group"`
 	RootKeyName                    string                `json:"root_key_name"`
 	IpAddress                      string                `json:"ip_address"`
@@ -297,13 +295,13 @@ func (prj *Project) validate() error {
 	internalIpMap := map[string]struct{}{}
 	externalIpInstanceNickname := ""
 	for iNickname, iDef := range prj.Instances {
-		if iDef.HostName == "" {
-			return fmt.Errorf("instance %s has empty hostname", iNickname)
+		if iDef.InstName == "" {
+			return fmt.Errorf("instance %s has empty Instname", iNickname)
 		}
-		if _, ok := hostnameMap[iDef.HostName]; ok {
-			return fmt.Errorf("instances share hostname %s", iDef.HostName)
+		if _, ok := hostnameMap[iDef.InstName]; ok {
+			return fmt.Errorf("instances share Instname %s", iDef.InstName)
 		}
-		hostnameMap[iDef.HostName] = struct{}{}
+		hostnameMap[iDef.InstName] = struct{}{}
 
 		if iDef.IpAddress == "" {
 			return fmt.Errorf("instance %s has empty ip address", iNickname)
@@ -334,23 +332,44 @@ func (prj *Project) validate() error {
 		return fmt.Errorf("none of the instances is using ssh_config_external_ip, at least one must have it")
 	}
 
-	// Verify that all scripts mentioned in the project are present
-	missingScriptErrorMap := map[string]struct{}{}
+	scriptsMap := map[string]bool{}
+	if err := rexec.HarvestAllEmbeddedFilesPaths("", scriptsMap); err != nil {
+		return err
+	}
+	missingScriptsMap := map[string]struct{}{}
 	for _, iDef := range prj.Instances {
-		for _, scriptPath := range iDef.Service.Cmd.Install {
-			if err := sh.VerifyEmbeddedScriptExists(scriptPath); err != nil {
-				missingScriptErrorMap[err.Error()] = struct{}{}
+		allInstanceScripts := append(append(append(iDef.Service.Cmd.Install, iDef.Service.Cmd.Config...), iDef.Service.Cmd.Start...), iDef.Service.Cmd.Stop...)
+		for _, scriptPath := range allInstanceScripts {
+			if _, ok := scriptsMap[scriptPath]; !ok {
+				missingScriptsMap[scriptPath] = struct{}{}
+			} else {
+				scriptsMap[scriptPath] = true
 			}
 		}
 	}
-	if len(missingScriptErrorMap) > 0 {
-		missingScriptErrors := make([]string, len(missingScriptErrorMap))
+
+	// Verify that all scripts mentioned in the project are present
+	if len(missingScriptsMap) > 0 {
+		missingScripts := make([]string, len(missingScriptsMap))
 		i := 0
-		for err, _ := range missingScriptErrorMap {
-			missingScriptErrors[i] = err
+		for scriptPath, _ := range missingScriptsMap {
+			missingScripts[i] = scriptPath
 			i++
 		}
-		return fmt.Errorf("cannot find embedded script(s): %s", strings.Join(missingScriptErrors, ","))
+		return fmt.Errorf("cannot find embedded script(s): %s", strings.Join(missingScripts, ","))
+	}
+
+	// Vice versa: verify all existing scripts are used
+	unusedScripts := make([]string, 0)
+	i := 0
+	for scriptPath, isUsed := range scriptsMap {
+		if !isUsed {
+			unusedScripts = append(unusedScripts, scriptPath)
+		}
+		i++
+	}
+	if len(unusedScripts) > 0 {
+		return fmt.Errorf("the following embedded scripts are not used in this project: %s", strings.Join(unusedScripts, ","))
 	}
 
 	return nil

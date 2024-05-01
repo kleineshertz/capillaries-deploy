@@ -5,7 +5,7 @@ LOGROTATE_CONFIG_FILE=/etc/logrotate.d/capidaemon_logrotate.conf
 
 sudo rm -f $LOGROTATE_CONFIG_FILE
 sudo tee $LOGROTATE_CONFIG_FILE <<EOF
-/mnt/capi_log/* {
+/mnt/capi_log/*.log {
     create 0644 root root
     hourly
     rotate 10
@@ -18,6 +18,8 @@ sudo tee $LOGROTATE_CONFIG_FILE <<EOF
     endscript
 }
 EOF
+
+sudo systemctl restart logrotate
 
 # Logrotate/Cron
 # Make sure less /etc/cron.daily/logrotate has something like this (should be installed by logrotate installer):

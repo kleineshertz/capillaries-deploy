@@ -15,7 +15,6 @@ import (
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
 	"github.com/capillariesio/capillaries-deploy/pkg/provider"
 	"github.com/capillariesio/capillaries-deploy/pkg/rexec"
-	"github.com/capillariesio/capillaries-deploy/pkg/sh"
 )
 
 const (
@@ -326,16 +325,16 @@ func main() {
 					// Just run WhoAmI
 					logMsg, finalErr = rexec.ExecCommandOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), "id", *argVerbosity)
 				case CmdInstallServices:
-					logMsg, finalErr = sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Install, iDef.Service.Env, *argVerbosity)
+					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Install, iDef.Service.Env, *argVerbosity)
 
 				case CmdConfigServices:
-					logMsg, finalErr = sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Config, iDef.Service.Env, *argVerbosity)
+					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Config, iDef.Service.Env, *argVerbosity)
 
 				case CmdStartServices:
-					logMsg, finalErr = sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Start, iDef.Service.Env, *argVerbosity)
+					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Start, iDef.Service.Env, *argVerbosity)
 
 				case CmdStopServices:
-					logMsg, finalErr = sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Stop, iDef.Service.Env, *argVerbosity)
+					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Stop, iDef.Service.Env, *argVerbosity)
 
 				default:
 					log.Fatalf("unknown service command:" + os.Args[1])
@@ -425,7 +424,7 @@ func main() {
 				<-throttle
 				sem <- 1
 				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, iDef *prj.InstanceDef) {
-					logMsg, finalErr := sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Stop, iDef.Service.Env, *argVerbosity)
+					logMsg, finalErr := rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Stop, iDef.Service.Env, *argVerbosity)
 					logChan <- logMsg
 					errChan <- finalErr
 					<-sem
@@ -445,7 +444,7 @@ func main() {
 				<-throttle
 				sem <- 1
 				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, iDef *prj.InstanceDef) {
-					logMsg, finalErr := sh.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Config, iDef.Service.Env, *argVerbosity)
+					logMsg, finalErr := rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Config, iDef.Service.Env, *argVerbosity)
 					logChan <- logMsg
 					errChan <- finalErr
 					<-sem

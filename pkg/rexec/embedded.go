@@ -1,17 +1,17 @@
-package sh
+package rexec
 
 import (
 	"embed"
 	"fmt"
+	"io/fs"
 
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
-	"github.com/capillariesio/capillaries-deploy/pkg/rexec"
 )
 
 //go:embed scripts/*
 var embeddedScriptsFs embed.FS
 
-func ExecEmbeddedScriptsOnInstance(sshConfig *rexec.SshConfigDef, ipAddress string, embeddedScriptPaths []string, envVars map[string]string, isVerbose bool) (l.LogMsg, error) {
+func ExecEmbeddedScriptsOnInstance(sshConfig *SshConfigDef, ipAddress string, embeddedScriptPaths []string, envVars map[string]string, isVerbose bool) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(fmt.Sprintf("ExecEmbeddedScriptsOnInstance: %s on %s", embeddedScriptPaths, ipAddress), isVerbose)
 
 	if len(embeddedScriptPaths) == 0 {
@@ -26,21 +26,24 @@ func ExecEmbeddedScriptsOnInstance(sshConfig *rexec.SshConfigDef, ipAddress stri
 	return lb.Complete(nil)
 }
 
-func VerifyEmbeddedScriptExists(embeddedScriptPath string) error {
-	f, err := embeddedScriptsFs.Open(embeddedScriptPath)
-	if err != nil {
-		return fmt.Errorf("cannot find embedded script %s: %s", embeddedScriptPath, err.Error())
-	}
-	f.Close()
-	return nil
+func HarvestAllEmbeddedFilesPaths(curDirPath string, harvestedPathsMap map[string]bool) error {
+	return fs.WalkDir(embeddedScriptsFs, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			harvestedPathsMap[path] = false
+		}
+		return nil
+	})
 }
 
-func execEmbeddedScriptOnInstance(sshConfig *rexec.SshConfigDef, lb *l.LogBuilder, ipAddress string, embeddedScriptPath string, params []string, envVars map[string]string, isVerbose bool) error {
+func execEmbeddedScriptOnInstance(sshConfig *SshConfigDef, lb *l.LogBuilder, ipAddress string, embeddedScriptPath string, params []string, envVars map[string]string, isVerbose bool) error {
 	cmdBytes, err := embeddedScriptsFs.ReadFile(embeddedScriptPath)
 	if err != nil {
 		return err
 	}
-	er := rexec.ExecSsh(sshConfig, ipAddress, string(cmdBytes), envVars)
+	er := ExecSsh(sshConfig, ipAddress, string(cmdBytes), envVars)
 	lb.Add(er.ToString())
 	if er.Error != nil {
 		return fmt.Errorf("cannot execute script %s on %s: %s", embeddedScriptPath, ipAddress, er.Error.Error())

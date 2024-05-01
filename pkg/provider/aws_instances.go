@@ -49,7 +49,7 @@ func (p *AwsDeployProvider) VerifyKeypairs(keypairMap map[string]struct{}) (l.Lo
 func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string, instanceTypeString string, imageId string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
 
-	hostName := p.GetCtx().PrjPair.Live.Instances[iNickname].HostName
+	instName := p.GetCtx().PrjPair.Live.Instances[iNickname].InstName
 	externalIpAddress := p.GetCtx().PrjPair.Live.Instances[iNickname].ExternalIpAddress
 
 	// If floating ip is being requested (it's a bastion instance), but it's already assigned, fail
@@ -60,13 +60,13 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 			return lb.Complete(err)
 		}
 		if associatedInstanceId != "" {
-			return lb.Complete(fmt.Errorf("cannot create instance %s, floating ip %s is already assigned, see instance %s", hostName, externalIpAddress, associatedInstanceId))
+			return lb.Complete(fmt.Errorf("cannot create instance %s, floating ip %s is already assigned, see instance %s", instName, externalIpAddress, associatedInstanceId))
 		}
 	}
 
 	// Check if the instance already exists
 
-	foundInstanceIdByName, foundInstanceStateByName, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, hostName)
+	foundInstanceIdByName, foundInstanceStateByName, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, instName)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -74,7 +74,7 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 	if p.GetCtx().PrjPair.Live.Instances[iNickname].Id == "" {
 		// If it was already created, save it for future use, but do not create
 		if foundInstanceIdByName != "" && (foundInstanceStateByName == types.InstanceStateNameRunning || foundInstanceStateByName == types.InstanceStateNamePending) {
-			lb.Add(fmt.Sprintf("instance %s(%s) already there, updating project", hostName, foundInstanceIdByName))
+			lb.Add(fmt.Sprintf("instance %s(%s) already there, updating project", instName, foundInstanceIdByName))
 			p.GetCtx().PrjPair.SetInstanceId(iNickname, foundInstanceIdByName)
 			return lb.Complete(nil)
 		}
@@ -89,7 +89,7 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 	}
 
 	if p.GetCtx().PrjPair.Live.Instances[iNickname].Id != "" {
-		lb.Add(fmt.Sprintf("instance %s(%s) already there, no need to create", hostName, foundInstanceIdByName))
+		lb.Add(fmt.Sprintf("instance %s(%s) already there, no need to create", instName, foundInstanceIdByName))
 		return lb.Complete(nil)
 	}
 
@@ -98,16 +98,16 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 	subnetId := ""
 	if p.GetCtx().PrjPair.Live.Instances[iNickname].SubnetType == "public" {
 		if p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id == "" {
-			return lb.Complete(fmt.Errorf("requested instance %s is supposed to be in public subnet, but public subnet was not initialized yet", hostName))
+			return lb.Complete(fmt.Errorf("requested instance %s is supposed to be in public subnet, but public subnet was not initialized yet", instName))
 		}
 		subnetId = p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id
 	} else if p.GetCtx().PrjPair.Live.Instances[iNickname].SubnetType == "private" {
 		if p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id == "" {
-			return lb.Complete(fmt.Errorf("requested instance %s is supposed to be in private subnet, but private subnet was not initialized yet", hostName))
+			return lb.Complete(fmt.Errorf("requested instance %s is supposed to be in private subnet, but private subnet was not initialized yet", instName))
 		}
 		subnetId = p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id
 	} else {
-		return lb.Complete(fmt.Errorf("requested instance %s is supposed to be in subnet of unknown type %s", hostName, p.GetCtx().PrjPair.Live.Instances[iNickname].SubnetType))
+		return lb.Complete(fmt.Errorf("requested instance %s is supposed to be in subnet of unknown type %s", instName, p.GetCtx().PrjPair.Live.Instances[iNickname].SubnetType))
 	}
 
 	// Verify/convert instance type
@@ -115,7 +115,7 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 	instanceId, err := cldaws.CreateInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
 		instanceTypeString,
 		imageId,
-		hostName,
+		instName,
 		p.GetCtx().PrjPair.Live.Instances[iNickname].IpAddress,
 		p.GetCtx().PrjPair.Live.SecurityGroups[p.GetCtx().PrjPair.Live.Instances[iNickname].SecurityGroupNickname].Id,
 		p.GetCtx().PrjPair.Live.Instances[iNickname].RootKeyName,
@@ -141,12 +141,12 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 func (p *AwsDeployProvider) DeleteInstance(iNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
 
-	hostName := p.GetCtx().PrjPair.Live.Instances[iNickname].HostName
-	if hostName == "" {
-		return lb.Complete(fmt.Errorf("empty parameter not allowed: hostName (%s)", hostName))
+	instName := p.GetCtx().PrjPair.Live.Instances[iNickname].InstName
+	if instName == "" {
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: instName (%s)", instName))
 	}
 
-	foundId, foundState, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, hostName)
+	foundId, foundState, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, instName)
 	if err != nil {
 		return lb.Complete(err)
 	}

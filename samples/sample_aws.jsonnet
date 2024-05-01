@@ -19,11 +19,10 @@
   local vpc_cidr = '10.5.0.0/16', // AWS only
   local private_subnet_cidr = '10.5.0.0/24',
   local public_subnet_cidr = '10.5.1.0/24', // AWS only
-  local private_subnet_allocation_pool = 'start=10.5.0.240,end=10.5.0.254',  // We use fixed ip addresses in the .0.2-.0.239 range, the rest is potentially available
   local bastion_subnet_type = if provider_name == 'aws' then 'public' else 'private',
 
   // Internal IPs
-  local internal_bastion_ip = if provider_name == 'aws' then '10.5.1.10' else '10.5.0.10', // In AWS, bastion is in the public subnet 10.5.1.0/24
+  local internal_bastion_ip = if provider_name == 'aws' then '10.5.1.10' else if provider_name == 'openstack' then '10.5.0.10' else 'unknown_bastion_ip', // In AWS, bastion is in the public subnet 10.5.1.0/24. In Openstack we have only the private subnet, so it's 10.5.0.10
   local prometheus_ip = '10.5.0.4',
   local rabbitmq_ip = '10.5.0.5',
   local daemon_ips = 
@@ -75,8 +74,8 @@
       'aws.c6a.32': 'c5ad.8xlarge', // 'c5ad.8xlarge' 2x600, c5ad.16xlarge' 2x1200
       'aws.c6a.64': 'c6ad.16xlarge',
 
-      'aws.c7g.16': 'c7g.4xlarge',
-      'aws.c7g.32': 'c7gd.8xlarge', // 1x900
+      'aws.c7g.16': 'c7gd.4xlarge', // 1x950
+      'aws.c7g.32': 'c7gd.8xlarge', // 1x1900
       'aws.c7g.64': 'c7gd.16xlarge', // 2x1900
   }, cassandra_node_flavor),
 
@@ -94,6 +93,7 @@
   // Whatever lsblk says
   local cassandra_nvme_regex = 
     if instance_flavor_cassandra == "c5ad.8xlarge" then "nvme[0-9]n[0-9] 558.8G"
+    else if instance_flavor_cassandra == "c7gd.4xlarge" then "nvme[0-9]n[0-9] 884.8G"
     else if instance_flavor_cassandra == "c7gd.8xlarge" then "nvme[0-9]n[0-9] 1.7T"
     else if instance_flavor_cassandra == "c7gd.16xlarge" then "nvme[0-9]n[0-9] 1.7T"
     else "unknown-nvme-mask",
@@ -151,7 +151,6 @@
       name: dep_name + '_private_subnet',
       cidr: private_subnet_cidr,
       availability_zone: subnet_availability_zone,
-      allocation_pool: private_subnet_allocation_pool,
     },
     public_subnet: {
       name: dep_name + '_public_subnet',
@@ -309,7 +308,7 @@
   local bastion_instance = {
     bastion: {
       purpose: 'bastion',
-      host_name: dep_name + '-bastion',
+      inst_name: dep_name + '-bastion',
       security_group: 'bastion',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: internal_bastion_ip,
@@ -384,7 +383,7 @@
   local rabbitmq_instance = {
     rabbitmq: {
       purpose: 'rabbitmq',
-      host_name: dep_name + '-rabbitmq',
+      inst_name: dep_name + '-rabbitmq',
       security_group: 'internal',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: rabbitmq_ip,
@@ -426,7 +425,7 @@
   local prometheus_instance = {
     prometheus: {
       purpose: 'prometheus',
-      host_name: dep_name + '-prometheus',
+      inst_name: dep_name + '-prometheus',
       security_group: 'internal',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: prometheus_ip,
@@ -463,7 +462,7 @@
   local cass_instances = {
     [e.nickname]: {
       purpose: 'cassandra',
-      host_name: e.host_name,
+      inst_name: e.inst_name,
       security_group: 'internal',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: e.ip_address,
@@ -503,7 +502,7 @@
     }
     for e in std.mapWithIndex(function(i, v) {
       nickname: std.format('cass%03d', i + 1),
-      host_name: dep_name + '-' + self.nickname,
+      inst_name: dep_name + '-' + self.nickname,
       token: cassandra_tokens[i],
       ip_address: v,
     }, cassandra_ips)
@@ -512,7 +511,7 @@
   local daemon_instances = {
     [e.nickname]: {
       purpose: 'daemon',
-      host_name: e.host_name,
+      inst_name: e.inst_name,
       security_group: 'internal',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: e.ip_address,
@@ -561,7 +560,7 @@
     }
     for e in std.mapWithIndex(function(i, v) {
       nickname: std.format('daemon%03d', i + 1),
-      host_name: dep_name + '-' + self.nickname,
+      inst_name: dep_name + '-' + self.nickname,
       ip_address: v,
     }, daemon_ips)
   },

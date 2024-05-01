@@ -24,7 +24,7 @@ sudo sed -i -e "s~endpoint_snitch:[\: \"a-zA-Z0-9\.]*~endpoint_snitch: SimpleSni
 #sudo sed -i -e "s~- /var/lib/cassandra/data~- /data/d~g" /etc/cassandra/cassandra.yaml
 #sudo sed -i -e "s~- /var/lib/cassandra/data~- /mnt/ramdisk/data~g" /etc/cassandra/cassandra.yaml
 sudo sed -i -e "s~- /var/lib/cassandra/data~~g" /etc/cassandra/cassandra.yaml
-# One disk or two disks
+# One disk or two disks (Cassandra instances can have one ore two nvme drives)
 if [ -d "/data1" ]; then
   sudo sed -i -e "s~data_file_directories:[^\n]*~data_file_directories: [ /data0/d, /data1/d ]~g" /etc/cassandra/cassandra.yaml
 else 
@@ -72,6 +72,10 @@ echo 'JVM_OPTS="$JVM_OPTS -Dcassandra.ignore_dc=true"' | sudo tee -a /etc/cassan
 
 # We do not need this config file, delete it
 sudo rm -f rm /etc/cassandra/cassandra-topology.properties
+
+# No need to logrotate, Cassandra uses log4j, configure it conservatively
+sudo sed -i -e "s~<maxFileSize>[^<]*</maxFileSize>~<maxFileSize>10MB</maxFileSize>~g" /etc/cassandra/logback.xml
+sudo sed -i -e "s~<totalSizeCap>[^<]*</totalSizeCap>~<totalSizeCap>1GB</totalSizeCap>~g" /etc/cassandra/logback.xml
 
 sudo systemctl start cassandra
 if [ "$?" -ne "0" ]; then
