@@ -1,10 +1,12 @@
 if [ "$SSH_USER" = "" ]; then
   echo Error, missing: SSH_USER=ubuntu
- exit 1
+  exit 1
 fi
 
 UI_CONFIG_FILE=/etc/nginx/sites-available/ui
-sudo rm -f $UI_CONFIG_FILE
+if [ -f "$UI_CONFIG_FILE" ]; then
+  sudo rm -f $UI_CONFIG_FILE
+fi
 
 sudo tee $UI_CONFIG_FILE <<EOF
 server {
@@ -13,6 +15,7 @@ server {
   root /home/$SSH_USER/ui;
   index index.html;
   location / {
+    include includes/allowed_ips.conf;
   }
 }
 EOF
@@ -21,7 +24,9 @@ sudo chmod 755 /home
 sudo chmod 755 /home/$SSH_USER
 sudo chmod 755 /home/$SSH_USER/ui
 
-sudo ln -s $UI_CONFIG_FILE /etc/nginx/sites-enabled/
+if [ ! -L "/etc/nginx/sites-enabled/ui" ]; then
+  sudo ln -s $UI_CONFIG_FILE /etc/nginx/sites-enabled/
+fi
 
 # nginx has a habit to write "syntax is ok" to stderr. Ignore it and rely on the exit code
 sudo nginx -t 2>/dev/null

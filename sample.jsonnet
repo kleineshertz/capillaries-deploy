@@ -121,8 +121,11 @@
   env_variables_used: [
     // Used in this config
     'CAPIDEPLOY_SSH_USER',
-    'CAPIDEPLOY_SSH_PRIVATE_KEY_PATH',
     'CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME',
+    'CAPIDEPLOY_SSH_PRIVATE_KEY_PATH',
+
+    'CAPIDEPLOY_BASTION_ALLOWED_IPS',
+
     'CAPIDEPLOY_CAPILLARIES_RELEASE_URL',
 
     'CAPIDEPLOY_RABBITMQ_ADMIN_NAME',
@@ -130,7 +133,6 @@
     'CAPIDEPLOY_RABBITMQ_USER_NAME',
     'CAPIDEPLOY_RABBITMQ_USER_PASS',
 
-    // Copied to daemon machines for s3 access
     'CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID',
     'CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY',
     'CAPIDEPLOY_IAM_AWS_DEFAULT_REGION',
@@ -207,11 +209,11 @@
           direction: 'ingress',
         },
         {
-          desc: 'Capillaries webapi',
+          desc: 'Capillaries external webapi',
           protocol: 'tcp',
           ethertype: 'IPv4',
           remote_ip: '0.0.0.0/0',
-          port: 6543,
+          port: 6544,
           direction: 'ingress',
         },
         {
@@ -341,7 +343,9 @@
           RABBITMQ_IP: rabbitmq_ip,
           SSH_USER: $.ssh_config.user,
           NETWORK_CIDR: $.network.cidr,
+          BASTION_ALLOWED_IPS: '{CAPIDEPLOY_BASTION_ALLOWED_IPS}',
           EXTERNAL_IP_ADDRESS: '{EXTERNAL_IP_ADDRESS}',  // internal: capideploy populates it from ssh_config.external_ip_address after loading project file; used by webui and webapi config.sh
+          EXTERNAL_WEBAPI_PORT: '6544',
           WEBAPI_PORT: '6543',
         },
         cmd: {
@@ -363,7 +367,9 @@
             'scripts/toolbelt/config.sh',
             'scripts/webapi/config.sh',
             'scripts/ui/config.sh',
+            'scripts/nginx/config_whitelist.sh',
             'scripts/nginx/config_ui.sh',
+            'scripts/nginx/config_webapi_reverse_proxy.sh',
             'scripts/nginx/config_prometheus_reverse_proxy.sh',
             'scripts/nginx/config_rabbitmq_reverse_proxy.sh',
           ],
@@ -409,7 +415,6 @@
             'scripts/prometheus/config_node_exporter.sh',
             'scripts/rabbitmq/config.sh',
             'scripts/rsyslog/config_rabbitmq_log_sender.sh',
-            'scripts/logrotate/config_rabbitmq.sh',
           ],
           start: [
             'scripts/rabbitmq/start.sh',

@@ -34,7 +34,7 @@ stderr:
 %s
 error:
 %s
-elapsed:%0.3f
+remote cmd elapsed:%0.3f
 -----------------------
 `, er.Cmd, er.Stdout, er.Stderr, errString, er.Elapsed)
 }

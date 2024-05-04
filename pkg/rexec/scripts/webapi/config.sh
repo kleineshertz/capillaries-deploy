@@ -26,7 +26,7 @@ if [ "$processid" != "" ]; then
   pkill -9 capiwebapi
 fi
 
-# If we ever use https and/or domain names, revisit this piece
+# If we ever use https and/or domain names, or use other port than 80, revisit this piece.
 WEBAPI_ACCESS_CONTROL_ACCESS_ORIGIN="http://$EXTERNAL_IP_ADDRESS"
 
 ENV_CONFIG_FILE=/home/$SSH_USER/bin/capiwebapi.json

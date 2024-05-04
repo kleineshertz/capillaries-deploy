@@ -7,7 +7,9 @@ if [ "$PROMETHEUS_IP" = "" ]; then
 fi
 
 PROMETHEUS_CONFIG_FILE=/etc/nginx/sites-available/prometheus
-sudo rm -f $PROMETHEUS_CONFIG_FILE
+if [ -f "$PROMETHEUS_CONFIG_FILE" ]; then
+  sudo rm -f $PROMETHEUS_CONFIG_FILE
+fi
 
 sudo tee $PROMETHEUS_CONFIG_FILE <<EOF
 server {
@@ -15,11 +17,14 @@ server {
     location / {
         proxy_pass http://$PROMETHEUS_IP:9090;
         include proxy_params;
+        include includes/allowed_ips.conf;
     }
 }
 EOF
 
-sudo ln -s $PROMETHEUS_CONFIG_FILE /etc/nginx/sites-enabled/
+if [ ! -L "/etc/nginx/sites-enabled/prometheus" ]; then
+  sudo ln -s $PROMETHEUS_CONFIG_FILE /etc/nginx/sites-enabled/
+fi
 
 # nginx has a habit to write "syntax is ok" to stderr. Ignore it and rely on the exit code
 sudo nginx -t 2>/dev/null

@@ -15,6 +15,7 @@ server {
     location / {
         proxy_pass http://$RABBITMQ_IP:15672;
         include proxy_params;
+        include includes/allowed_ips.conf;
     }
 }
 EOF

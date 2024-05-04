@@ -19,14 +19,10 @@ fi
 rm -fR /home/$SSH_USER/.aws
 mkdir -p /home/$SSH_USER/.aws
 
-sudo cat > /home/$SSH_USER/.aws/credentials << 'endmsgmarker'
-[default]
-aws_access_key_id=$IAM_AWS_ACCESS_KEY_ID
-aws_secret_access_key=$IAM_AWS_SECRET_ACCESS_KEY
-endmsgmarker
+sudo echo "[default]" > /home/$SSH_USER/.aws/credentials
+sudo echo "aws_access_key_id=$IAM_AWS_ACCESS_KEY_ID" >> /home/$SSH_USER/.aws/credentials
+sudo echo "aws_secret_access_key=$IAM_AWS_SECRET_ACCESS_KEY" >> /home/$SSH_USER/.aws/credentials
 
-sudo cat > /home/$SSH_USER/.aws/config << 'endmsgmarker'
-[default]
-region=$IAM_AWS_DEFAULT_REGION
-output=json
-endmsgmarker
+sudo echo "[default]" > /home/$SSH_USER/.aws/config
+sudo echo "region=$IAM_AWS_DEFAULT_REGION" >> /home/$SSH_USER/.aws/config
+sudo echo "output=json" >> /home/$SSH_USER/.aws/config

@@ -37,7 +37,7 @@ func (t *ExecTimeouts) InitDefaults() {
 		t.DeleteInstance = 120
 	}
 	if t.CreateNatGateway == 0 {
-		t.CreateNatGateway = 120
+		t.CreateNatGateway = 180 // It really may take that long
 	}
 	if t.DeleteNatGateway == 0 {
 		t.DeleteNatGateway = 180 // It may take AWS a while

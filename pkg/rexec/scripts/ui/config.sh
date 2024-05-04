@@ -1,7 +1,7 @@
 # Tweak UI so it calls the proper capiwebapi URL
 
-if [ "$WEBAPI_PORT" = "" ]; then
-  echo Error, missing: WEBAPI_PORT=6543
+if [ "$EXTERNAL_WEBAPI_PORT" = "" ]; then
+  echo Error, missing: EXTERNAL_WEBAPI_PORT=6544
   exit 1
 fi
 if [ "$SSH_USER" = "" ]; then
@@ -14,5 +14,6 @@ if [ "$EXTERNAL_IP_ADDRESS" = "" ]; then
   exit 1
 fi
 
-echo Patching WebUI to use Webapi ip:port $EXTERNAL_IP_ADDRESS:$WEBAPI_PORT
-sed -i -e 's~localhost:6543~'$EXTERNAL_IP_ADDRESS':'$WEBAPI_PORT'~g' /home/$SSH_USER/ui/_app/immutable/nodes/*.js
+# This is not idempotent. It's actually pretty hacky.
+echo Patching WebUI to use external Webapi ip:port $EXTERNAL_IP_ADDRESS:$EXTERNAL_WEBAPI_PORT
+sed -i -e 's~localhost:6543~'$EXTERNAL_IP_ADDRESS':'$EXTERNAL_WEBAPI_PORT'~g' /home/$SSH_USER/ui/_app/immutable/nodes/*.js
