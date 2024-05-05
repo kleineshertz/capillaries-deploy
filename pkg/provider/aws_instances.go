@@ -112,7 +112,7 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 
 	// Verify/convert instance type
 
-	instanceId, err := cldaws.CreateInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
+	instanceId, err := cldaws.CreateInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
 		instanceTypeString,
 		imageId,
 		instName,

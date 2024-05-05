@@ -35,7 +35,7 @@ func ensureAwsVpc(p *AwsDeployProvider) (l.LogMsg, error) {
 	}
 
 	if p.GetCtx().PrjPair.Live.Network.Id == "" {
-		newVpcId, err := cldaws.CreateVpc(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
+		newVpcId, err := cldaws.CreateVpc(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
 			vpcName,
 			p.GetCtx().PrjPair.Live.Network.Cidr,
 			p.GetCtx().PrjPair.Live.Timeouts.CreateNetwork)
@@ -82,7 +82,7 @@ func ensureAwsPrivateSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
 		return lb.Complete(nil)
 	}
 
-	newId, err := cldaws.CreateSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
+	newId, err := cldaws.CreateSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
 		p.GetCtx().PrjPair.Live.Network.Id,
 		subnetDef.Name,
 		subnetDef.Cidr,
@@ -129,7 +129,7 @@ func ensureAwsPublicSubnet(p *AwsDeployProvider) (l.LogMsg, error) {
 		return lb.Complete(nil)
 	}
 
-	newId, err := cldaws.CreateSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
+	newId, err := cldaws.CreateSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
 		p.GetCtx().PrjPair.Live.Network.Id,
 		subnetDef.Name,
 		subnetDef.Cidr,
@@ -194,7 +194,7 @@ func ensureNatGatewayAndRoutePrivateSubnet(p *AwsDeployProvider) (l.LogMsg, erro
 	// Create NAT gateway in the public subnet if needed
 
 	if p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayId == "" {
-		newNatGatewayId, err := cldaws.CreateNatGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
+		newNatGatewayId, err := cldaws.CreateNatGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
 			natGatewayName,
 			p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id,
 			natGatewayPublicIpAllocationId,
@@ -208,7 +208,7 @@ func ensureNatGatewayAndRoutePrivateSubnet(p *AwsDeployProvider) (l.LogMsg, erro
 	// Create new route table id for this vpc
 
 	routeTableName := p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Name + "_rt_to_natgw"
-	routeTableId, err := cldaws.CreateRouteTableForVpc(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, routeTableName, p.GetCtx().PrjPair.Live.Network.Id)
+	routeTableId, err := cldaws.CreateRouteTableForVpc(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, routeTableName, p.GetCtx().PrjPair.Live.Network.Id)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -270,7 +270,7 @@ func ensureInternetGatewayAndRoutePublicSubnet(p *AwsDeployProvider) (l.LogMsg, 
 	// Create internet gateway (router) if needed
 
 	if p.GetCtx().PrjPair.Live.Network.Router.Id == "" {
-		newRouterId, err := cldaws.CreateInternetGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, routerName)
+		newRouterId, err := cldaws.CreateInternetGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, routerName)
 		if err != nil {
 			return lb.Complete(err)
 		}

@@ -8,13 +8,13 @@ import (
 func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
-	bastionIp, err := cldaws.AllocateFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, "bastion")
+	bastionIp, err := cldaws.AllocateFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, "bastion")
 	if err != nil {
 		return lb.Complete(err)
 	}
 	p.GetCtx().PrjPair.SetSshExternalIp(bastionIp)
 
-	natgwIp, err := cldaws.AllocateFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, "natgw")
+	natgwIp, err := cldaws.AllocateFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, "natgw")
 	if err != nil {
 		return lb.Complete(err)
 	}

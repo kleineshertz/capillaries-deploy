@@ -137,7 +137,7 @@ func getInstanceStateName(client *ec2.Client, goCtx context.Context, lb *l.LogBu
 	return "", nil
 }
 
-func CreateInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
+func CreateInstance(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder,
 	instanceTypeString string,
 	imageId string,
 	instName string,
@@ -169,8 +169,7 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 		PrivateIpAddress: aws.String(privateIpAddress),
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeInstance,
-			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(instName)}},
-		}}})
+			Tags:         mapToTags(instName, tags)}}})
 	lb.AddObject("RunInstances", runOut)
 	if err != nil {
 		return "", fmt.Errorf("cannot create instance %s: %s", instName, err.Error())

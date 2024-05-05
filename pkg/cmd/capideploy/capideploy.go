@@ -18,25 +18,25 @@ import (
 )
 
 const (
-	CmdCreateFloatingIps      string = "create_floating_ips"
-	CmdDeleteFloatingIps      string = "delete_floating_ips"
-	CmdCreateSecurityGroups   string = "create_security_groups"
-	CmdDeleteSecurityGroups   string = "delete_security_groups"
-	CmdCreateNetworking       string = "create_networking"
-	CmdDeleteNetworking       string = "delete_networking"
-	CmdCreateVolumes          string = "create_volumes"
-	CmdDeleteVolumes          string = "delete_volumes"
-	CmdCreateInstances        string = "create_instances"
-	CmdDeleteInstances        string = "delete_instances"
-	CmdAttachVolumes          string = "attach_volumes"
-	CmdUploadFiles            string = "upload_files"
-	CmdDownloadFiles          string = "download_files"
-	CmdInstallServices        string = "install_services"
-	CmdConfigServices         string = "config_services"
-	CmdStartServices          string = "start_services"
-	CmdStopServices           string = "stop_services"
-	CmdPingInstances          string = "ping_instances"
-	CmdConfigCassandraCluster string = "config_cassandra_cluster"
+	CmdListDeploymentResources string = "list_deployment_resources"
+	CmdCreateFloatingIps       string = "create_floating_ips"
+	CmdDeleteFloatingIps       string = "delete_floating_ips"
+	CmdCreateSecurityGroups    string = "create_security_groups"
+	CmdDeleteSecurityGroups    string = "delete_security_groups"
+	CmdCreateNetworking        string = "create_networking"
+	CmdDeleteNetworking        string = "delete_networking"
+	CmdCreateVolumes           string = "create_volumes"
+	CmdDeleteVolumes           string = "delete_volumes"
+	CmdCreateInstances         string = "create_instances"
+	CmdDeleteInstances         string = "delete_instances"
+	CmdAttachVolumes           string = "attach_volumes"
+	CmdUploadFiles             string = "upload_files"
+	CmdDownloadFiles           string = "download_files"
+	CmdInstallServices         string = "install_services"
+	CmdConfigServices          string = "config_services"
+	CmdStartServices           string = "start_services"
+	CmdStopServices            string = "stop_services"
+	CmdPingInstances           string = "ping_instances"
 )
 
 type SingleThreadCmdHandler func() (l.LogMsg, error)
@@ -118,6 +118,7 @@ Commands:
   %s
   %s
   %s
+  %s
   %s <comma-separated list of instances to create volumes on, or 'all'>
   %s <comma-separated list of instances to attach volumes on, or 'all'>
   %s <comma-separated list of instances to delete volumes on, or 'all'>
@@ -128,8 +129,9 @@ Commands:
   %s <comma-separated list of instances to config services on, or 'all'>
   %s <comma-separated list of instances to start services on, or 'all'>
   %s <comma-separated list of instances to stop services on, or 'all'>
-  %s
 `,
+		CmdListDeploymentResources,
+
 		CmdCreateFloatingIps,
 		CmdDeleteFloatingIps,
 		CmdCreateSecurityGroups,
@@ -149,8 +151,6 @@ Commands:
 		CmdConfigServices,
 		CmdStartServices,
 		CmdStopServices,
-
-		CmdConfigCassandraCluster,
 	)
 	fmt.Printf("\nOptional parameters:\n")
 	flagset.PrintDefaults()
@@ -180,12 +180,13 @@ func main() {
 	var prjErr error
 
 	singleThreadCommands := map[string]SingleThreadCmdHandler{
-		CmdCreateFloatingIps:    nil,
-		CmdDeleteFloatingIps:    nil,
-		CmdCreateSecurityGroups: nil,
-		CmdDeleteSecurityGroups: nil,
-		CmdCreateNetworking:     nil,
-		CmdDeleteNetworking:     nil,
+		CmdListDeploymentResources: nil,
+		CmdCreateFloatingIps:       nil,
+		CmdDeleteFloatingIps:       nil,
+		CmdCreateSecurityGroups:    nil,
+		CmdDeleteSecurityGroups:    nil,
+		CmdCreateNetworking:        nil,
+		CmdDeleteNetworking:        nil,
 	}
 
 	if _, ok := singleThreadCommands[os.Args[1]]; ok {
@@ -206,6 +207,7 @@ func main() {
 	if deployProviderErr != nil {
 		log.Fatalf(deployProviderErr.Error())
 	}
+	singleThreadCommands[CmdListDeploymentResources] = deployProvider.ListDeploymentResources
 	singleThreadCommands[CmdCreateFloatingIps] = deployProvider.CreateFloatingIps
 	singleThreadCommands[CmdDeleteFloatingIps] = deployProvider.DeleteFloatingIps
 	singleThreadCommands[CmdCreateSecurityGroups] = deployProvider.CreateSecurityGroups
@@ -399,113 +401,7 @@ func main() {
 			}
 		}
 	} else {
-		switch os.Args[1] {
-		case CmdConfigCassandraCluster:
-			var someCassIpAddress string
-			cassandraInstanceDefs := map[string]*prj.InstanceDef{}
-			for iNickname, iDef := range prjPair.Live.Instances {
-				if iDef.Purpose == string(prj.InstancePurposeCassandra) {
-					cassandraInstanceDefs[iNickname] = iDef
-					if someCassIpAddress == "" {
-						someCassIpAddress = iDef.IpAddress
-					}
-				}
-			}
-
-			if len(cassandraInstanceDefs) == 0 {
-				log.Fatalf("no cassandra instances")
-			}
-
-			// Stop all at once
-
-			errorsExpected = len(cassandraInstanceDefs)
-			errChan = make(chan error, len(cassandraInstanceDefs))
-			for _, iDef := range cassandraInstanceDefs {
-				<-throttle
-				sem <- 1
-				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, iDef *prj.InstanceDef) {
-					logMsg, finalErr := rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Stop, iDef.Service.Env, *argVerbosity)
-					logChan <- logMsg
-					errChan <- finalErr
-					<-sem
-				}(&prjPair.Live, logChan, errChan, iDef)
-			}
-
-			stopCassErr := waitForWorkers(errorsExpected, errChan, logChan)
-			if stopCassErr > 0 {
-				os.Exit(stopCassErr)
-			}
-
-			// Config/start all at once
-
-			errorsExpected = len(cassandraInstanceDefs)
-			errChan = make(chan error, len(cassandraInstanceDefs))
-			for _, iDef := range cassandraInstanceDefs {
-				<-throttle
-				sem <- 1
-				go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error, iDef *prj.InstanceDef) {
-					logMsg, finalErr := rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Config, iDef.Service.Env, *argVerbosity)
-					logChan <- logMsg
-					errChan <- finalErr
-					<-sem
-				}(&prjPair.Live, logChan, errChan, iDef)
-			}
-
-			confCassErr := waitForWorkers(errorsExpected, errChan, logChan)
-			if confCassErr > 0 {
-				os.Exit(confCassErr)
-			}
-
-			// Verify the cluster is running
-
-			errorsExpected = 1
-			errChan = make(chan error, 1)
-			sem <- 1
-			go func(prj *prj.Project, logChan chan l.LogMsg, errChan chan error) {
-				startWaitTs := time.Now()
-				var logMsg l.LogMsg
-				var finalErr error
-				for {
-					logMsg, finalErr = rexec.ExecCommandOnInstance(prjPair.Live.SshConfig, someCassIpAddress, "nodetool describecluster;nodetool status", true)
-					if finalErr != nil {
-						break
-					}
-
-					if strings.Contains(string(logMsg), "Normal/Leaving/Joining/Moving") {
-						completeCount := 0
-						for _, iDef := range cassandraInstanceDefs {
-							if strings.Contains(string(logMsg), "UN  "+iDef.IpAddress) {
-								completeCount++
-							}
-						}
-
-						if completeCount == len(cassandraInstanceDefs) {
-							break
-						}
-					} else {
-						if !strings.Contains(string(logMsg), "nodetool: Failed to connect") ||
-							!strings.Contains(string(logMsg), "InstanceNotFoundException") ||
-							!strings.Contains(string(logMsg), "Has this node finished starting up") {
-							// Unknown problem
-							finalErr = fmt.Errorf("unknown nodetool output")
-							break
-						}
-					}
-
-					if time.Since(startWaitTs).Seconds() > float64(60) {
-						finalErr = fmt.Errorf("giving up waiting for cluster to start")
-						break
-					}
-					time.Sleep(5 * time.Second)
-				}
-				logChan <- logMsg
-				errChan <- finalErr
-				<-sem
-			}(&prjPair.Live, logChan, errChan)
-
-		default:
-			log.Fatalf("unknown command:" + os.Args[1])
-		}
+		log.Fatalf("unknown command:" + os.Args[1])
 	}
 
 	finalCmdErr := waitForWorkers(errorsExpected, errChan, logChan)

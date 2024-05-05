@@ -110,7 +110,7 @@ func stringToVolType(volTypeString string) (types.VolumeType, error) {
 	return types.VolumeTypeStandard, fmt.Errorf("unknown volume type %s", volTypeString)
 }
 
-func CreateVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volName string, availabilityZone string, size int32, volTypeString string) (string, error) {
+func CreateVolume(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, volName string, availabilityZone string, size int32, volTypeString string) (string, error) {
 	volType, err := stringToVolType(volTypeString)
 	if err != nil {
 		return "", err
@@ -124,7 +124,7 @@ func CreateVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 		VolumeType:       volType,
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeVolume,
-			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(volName)}}}}})
+			Tags:         mapToTags(volName, tags)}}})
 	lb.AddObject("CreateVolume", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot create volume %s: %s", volName, err.Error())

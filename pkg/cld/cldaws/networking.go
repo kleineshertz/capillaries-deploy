@@ -27,7 +27,7 @@ func GetSubnetIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuild
 	return *out.Subnets[0].SubnetId, nil
 }
 
-func CreateSubnet(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcId string, subnetName string, cidr string, availabilityZone string) (string, error) {
+func CreateSubnet(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, vpcId string, subnetName string, cidr string, availabilityZone string) (string, error) {
 	if vpcId == "" || subnetName == "" || cidr == "" || availabilityZone == "" {
 		return "", fmt.Errorf("empty parameter not allowed: vpcId (%s), subnetName (%s), cidr (%s), availabilityZone (%s)", vpcId, subnetName, cidr, availabilityZone)
 	}
@@ -37,8 +37,7 @@ func CreateSubnet(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 		AvailabilityZone: aws.String(availabilityZone),
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeSubnet,
-			Tags: []types.Tag{
-				{Key: aws.String("Name"), Value: aws.String(subnetName)}}}}})
+			Tags:         mapToTags(subnetName, tags)}}})
 	lb.AddObject("CreateSubnet", outCreate)
 	if err != nil {
 		return "", fmt.Errorf("cannot create subnet %s: %s", subnetName, err.Error())
@@ -79,7 +78,7 @@ func GetVpcIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 	return "", nil
 }
 
-func CreateVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcName string, cidrBlock string, timeoutSeconds int) (string, error) {
+func CreateVpc(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, vpcName string, cidrBlock string, timeoutSeconds int) (string, error) {
 	if vpcName == "" || cidrBlock == "" {
 		return "", fmt.Errorf("empty parameter not allowed: vpcName (%s), cidrBlock (%s)", vpcName, cidrBlock)
 	}
@@ -87,7 +86,8 @@ func CreateVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcN
 		CidrBlock: aws.String(cidrBlock),
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeVpc,
-			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(vpcName)}}}}})
+			Tags:         mapToTags(vpcName, tags)}}})
+
 	lb.AddObject("CreateVpc", outCreate)
 	if err != nil {
 		return "", fmt.Errorf("cannot create vpc (network) %s: %s", vpcName, err.Error())
@@ -194,7 +194,7 @@ func GetNatGatewayIdAndStateByName(client *ec2.Client, goCtx context.Context, lb
 	return "", types.NatGatewayStateDeleted, nil
 }
 
-func CreateNatGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, natGatewayName string, subnetId string, publicIpAllocationId string, timeoutSeconds int) (string, error) {
+func CreateNatGateway(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, natGatewayName string, subnetId string, publicIpAllocationId string, timeoutSeconds int) (string, error) {
 	if natGatewayName == "" || subnetId == "" || publicIpAllocationId == "" {
 		return "", fmt.Errorf("empty parameter not allowed: natGatewayName (%s), subnetId (%s), publicIpAllocationId (%s)", natGatewayName, subnetId, publicIpAllocationId)
 	}
@@ -203,7 +203,7 @@ func CreateNatGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilde
 		AllocationId: aws.String(publicIpAllocationId),
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeNatgateway,
-			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(natGatewayName)}}}}})
+			Tags:         mapToTags(natGatewayName, tags)}}})
 	lb.AddObject("CreateNatGateway", outCreateNatgw)
 	if err != nil {
 		return "", fmt.Errorf("cannot create nat gateway %s: %s", natGatewayName, err.Error())
@@ -286,7 +286,7 @@ func DeleteNatGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilde
 	return nil
 }
 
-func CreateRouteTableForVpc(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableName string, vpcId string) (string, error) {
+func CreateRouteTableForVpc(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, routeTableName string, vpcId string) (string, error) {
 	if routeTableName == "" || vpcId == "" {
 		return "", fmt.Errorf("empty parameter not allowed: routeTableName (%s), vpcId (%s)", routeTableName, vpcId)
 	}
@@ -294,7 +294,7 @@ func CreateRouteTableForVpc(client *ec2.Client, goCtx context.Context, lb *l.Log
 		VpcId: aws.String(vpcId),
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeRouteTable,
-			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(routeTableName)}}}}})
+			Tags:         mapToTags(routeTableName, tags)}}})
 	lb.AddObject("CreateRouteTable", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot create route table %s: %s", routeTableName, err.Error())
@@ -346,15 +346,14 @@ func GetInternetGatewayIdByName(client *ec2.Client, goCtx context.Context, lb *l
 	return "", nil
 }
 
-func CreateInternetGateway(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, internetGatewayName string) (string, error) {
+func CreateInternetGateway(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, internetGatewayName string) (string, error) {
 	if internetGatewayName == "" {
 		return "", fmt.Errorf("empty parameter not allowed: internetGatewayName (%s)", internetGatewayName)
 	}
 	outCreateRouter, err := client.CreateInternetGateway(goCtx, &ec2.CreateInternetGatewayInput{
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeInternetGateway,
-			Tags: []types.Tag{
-				{Key: aws.String("Name"), Value: aws.String(internetGatewayName)}}}}})
+			Tags:         mapToTags(internetGatewayName, tags)}}})
 	lb.AddObject("CreateInternetGateway", outCreateRouter)
 	if err != nil {
 		return "", fmt.Errorf("cannot create internet gateway (router) %s: %s", internetGatewayName, err.Error())

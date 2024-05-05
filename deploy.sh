@@ -10,7 +10,14 @@ set -x # Print commands
 
 go build ./pkg/cmd/capideploy/capideploy.go
 
-./capideploy create_floating_ips -prj=sample.json --verbose > deploy.log
+./capideploy list_deployment_resources -prj=./sample.json --verbose > deploy.log
+
+BILLED_RESOURCES=$(cat deploy.log | grep ",billed")
+if [ "$BILLED_RESOURCES" != "" ]; then
+  echo "This deployment has resources that may be still/already active, please check the log"
+fi
+
+./capideploy create_floating_ips -prj=sample.json --verbose >> deploy.log
 
 set +x
 
@@ -49,3 +56,7 @@ set -e
 ./capideploy config_services "bastion,rabbitmq,prometheus,daemon*" -prj=sample.json --verbose >> deploy.log
 
 ssh -o StrictHostKeyChecking=no -i $CAPIDEPLOY_SSH_PRIVATE_KEY_PATH -J $BASTION_IP $CAPIDEPLOY_SSH_USER@10.5.0.11 'nodetool describecluster;nodetool status'
+
+set +x
+echo To run commands against this deployment, you will probably need this:
+echo export BASTION_IP=$BASTION_IP

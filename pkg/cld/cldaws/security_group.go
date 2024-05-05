@@ -26,7 +26,7 @@ func GetSecurityGroupIdByName(client *ec2.Client, goCtx context.Context, lb *l.L
 	return "", nil
 }
 
-func CreateSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, securityGroupName string, vpcId string) (string, error) {
+func CreateSecurityGroup(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, securityGroupName string, vpcId string) (string, error) {
 	if securityGroupName == "" || vpcId == "" {
 		return "", fmt.Errorf("empty parameter not allowed: securityGroupName (%s), vpcId (%s)", securityGroupName, vpcId)
 	}
@@ -36,7 +36,7 @@ func CreateSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.LogBui
 		Description: aws.String(securityGroupName),
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeSecurityGroup,
-			Tags:         []types.Tag{{Key: aws.String("Name"), Value: aws.String(securityGroupName)}}}}})
+			Tags:         mapToTags(securityGroupName, tags)}}})
 	lb.AddObject("CreateSecurityGroup", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot create security group %s: %s", securityGroupName, err.Error())

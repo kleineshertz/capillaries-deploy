@@ -115,6 +115,7 @@
                              "\\'" + std.join(":7070\\',\\'", cassandra_ips) + ":7070\\'," + // JMX exporter
                              "\\'" + std.join(":9100\\',\\'", daemon_ips) + ":9100\\'",      // Prometheus node exporter
 
+  deployment_name: dep_name,
   deploy_provider_name: provider_name,
 
   // Full list of env variables expected by capideploy working with this project

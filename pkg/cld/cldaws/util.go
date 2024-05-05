@@ -20,3 +20,16 @@ func TagResourceName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder
 	}
 	return nil
 }
+
+func mapToTags(tagName string, tagMap map[string]string) []types.Tag {
+	result := make([]types.Tag, len(tagMap)+1)
+	if tagMap != nil {
+		tagIdx := 0
+		for tagName, tagVal := range tagMap {
+			result[tagIdx] = types.Tag{Key: aws.String(tagName), Value: aws.String(tagVal)}
+			tagIdx++
+		}
+	}
+	result[len(tagMap)] = types.Tag{Key: aws.String("Name"), Value: aws.String(tagName)}
+	return result
+}

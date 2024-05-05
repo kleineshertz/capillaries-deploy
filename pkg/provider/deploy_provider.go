@@ -3,26 +3,37 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/cloudcontrol"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
+	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
 )
 
 type AwsCtx struct {
-	Config    aws.Config
-	Ec2Client *ec2.Client
+	Config             aws.Config
+	Ec2Client          *ec2.Client
+	TaggingClient      *resourcegroupstaggingapi.Client
+	CloudControlClient *cloudcontrol.Client
 }
+
+const TagCapiDeploy string = "CapiDeploy"
+
 type DeployCtx struct {
 	PrjPair   *prj.ProjectPair
 	GoCtx     context.Context
 	IsVerbose bool
 	Aws       *AwsCtx
+	Tags      map[string]string
 }
 type DeployProvider interface {
 	GetCtx() *DeployCtx
+	ListDeploymentResources() (l.LogMsg, error)
 	CreateFloatingIps() (l.LogMsg, error)
 	DeleteFloatingIps() (l.LogMsg, error)
 	CreateSecurityGroups() (l.LogMsg, error)
@@ -59,8 +70,11 @@ func DeployProviderFactory(prjPair *prj.ProjectPair, goCtx context.Context, isVe
 				PrjPair:   prjPair,
 				GoCtx:     goCtx,
 				IsVerbose: isVerbose,
+				Tags:      map[string]string{TagCapiDeploy: prjPair.Live.DeploymentName},
 				Aws: &AwsCtx{
-					Ec2Client: ec2.NewFromConfig(cfg),
+					Ec2Client:          ec2.NewFromConfig(cfg),
+					TaggingClient:      resourcegroupstaggingapi.NewFromConfig(cfg),
+					CloudControlClient: cloudcontrol.NewFromConfig(cfg),
 				},
 			},
 		}, nil
@@ -87,4 +101,14 @@ export BASTION_IP=%s
 		prj.SshConfig.User,
 		prj.SshConfig.PrivateKeyPath,
 		prj.SshConfig.ExternalIpAddress)
+}
+
+func (p *AwsDeployProvider) ListDeploymentResources() (l.LogMsg, error) {
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	resources, err := cldaws.GetResourcesByTag(p.GetCtx().Aws.TaggingClient, p.GetCtx().Aws.CloudControlClient, p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Aws.Config.Region, TagCapiDeploy, p.Ctx.PrjPair.Live.DeploymentName)
+	if err != nil {
+		return lb.Complete(err)
+	}
+	fmt.Printf("%s\n", strings.Join(resources, "\n"))
+	return lb.Complete(nil)
 }

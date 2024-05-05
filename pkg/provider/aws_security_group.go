@@ -34,7 +34,7 @@ func createAwsSecurityGroup(p *AwsDeployProvider, sgNickname string) (l.LogMsg, 
 	}
 
 	if sgDef.Id == "" {
-		newId, err := cldaws.CreateSecurityGroup(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, sgDef.Name, p.GetCtx().PrjPair.Live.Network.Id)
+		newId, err := cldaws.CreateSecurityGroup(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, sgDef.Name, p.GetCtx().PrjPair.Live.Network.Id)
 		if err != nil {
 			return lb.Complete(err)
 		}

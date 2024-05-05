@@ -44,14 +44,13 @@ func GetPublicIpAssoiatedInstance(client *ec2.Client, goCtx context.Context, lb 
 	return "", nil
 }
 
-func AllocateFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, publicIpDesc string) (string, error) {
+func AllocateFloatingIp(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, publicIpDesc string) (string, error) {
 	if publicIpDesc == "" {
 		return "", fmt.Errorf("empty parameter not allowed: publicIpDesc (%s)", publicIpDesc)
 	}
 	out, err := client.AllocateAddress(goCtx, &ec2.AllocateAddressInput{TagSpecifications: []types.TagSpecification{{
 		ResourceType: types.ResourceTypeElasticIp,
-		Tags: []types.Tag{
-			{Key: aws.String("Name"), Value: aws.String(publicIpDesc)}}}}})
+		Tags:         mapToTags(publicIpDesc, tags)}}})
 	lb.AddObject("AllocateAddress", out)
 	if err != nil {
 		return "", fmt.Errorf("cannot allocate %s IP address:%s", publicIpDesc, err.Error())

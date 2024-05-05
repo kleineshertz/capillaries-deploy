@@ -42,7 +42,7 @@ func (p *AwsDeployProvider) CreateVolume(iNickname string, volNickname string) (
 		return lb.Complete(nil)
 	}
 
-	newId, err := cldaws.CreateVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name, volDef.AvailabilityZone, int32(volDef.Size), volDef.Type)
+	newId, err := cldaws.CreateVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, volDef.Name, volDef.AvailabilityZone, int32(volDef.Size), volDef.Type)
 	if err != nil {
 		return lb.Complete(err)
 	}

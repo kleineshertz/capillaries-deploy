@@ -173,6 +173,7 @@ func (iDef *InstanceDef) Clean() {
 }
 
 type Project struct {
+	DeploymentName     string                       `json:"deployment_name"`
 	SshConfig          *rexec.SshConfigDef          `json:"ssh_config"`
 	Timeouts           ExecTimeouts                 `json:"timeouts"`
 	EnvVariablesUsed   []string                     `json:"env_variables_used"`
