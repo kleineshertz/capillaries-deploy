@@ -13,7 +13,7 @@
             "program": "${workspaceFolder}/pkg/cmd/capideploy/capideploy.go",
             "envFile": "${env:HOME}/capideploy_sample.rc",
             "args": [
-                "list_deployment_resources",
+                "create_instances_from_snapshot_images", "bastion",
                 "-prj=sample.json",
                 "--verbose"
             ]

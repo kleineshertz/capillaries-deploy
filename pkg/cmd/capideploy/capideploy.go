@@ -18,25 +18,29 @@ import (
 )
 
 const (
-	CmdListDeploymentResources string = "list_deployment_resources"
-	CmdCreateFloatingIps       string = "create_floating_ips"
-	CmdDeleteFloatingIps       string = "delete_floating_ips"
-	CmdCreateSecurityGroups    string = "create_security_groups"
-	CmdDeleteSecurityGroups    string = "delete_security_groups"
-	CmdCreateNetworking        string = "create_networking"
-	CmdDeleteNetworking        string = "delete_networking"
-	CmdCreateVolumes           string = "create_volumes"
-	CmdDeleteVolumes           string = "delete_volumes"
-	CmdCreateInstances         string = "create_instances"
-	CmdDeleteInstances         string = "delete_instances"
-	CmdAttachVolumes           string = "attach_volumes"
-	CmdUploadFiles             string = "upload_files"
-	CmdDownloadFiles           string = "download_files"
-	CmdInstallServices         string = "install_services"
-	CmdConfigServices          string = "config_services"
-	CmdStartServices           string = "start_services"
-	CmdStopServices            string = "stop_services"
-	CmdPingInstances           string = "ping_instances"
+	CmdListDeploymentResources           string = "list_deployment_resources"
+	CmdCreateFloatingIps                 string = "create_floating_ips"
+	CmdDeleteFloatingIps                 string = "delete_floating_ips"
+	CmdCreateSecurityGroups              string = "create_security_groups"
+	CmdDeleteSecurityGroups              string = "delete_security_groups"
+	CmdCreateNetworking                  string = "create_networking"
+	CmdDeleteNetworking                  string = "delete_networking"
+	CmdCreateVolumes                     string = "create_volumes"
+	CmdDeleteVolumes                     string = "delete_volumes"
+	CmdCreateInstances                   string = "create_instances"
+	CmdDeleteInstances                   string = "delete_instances"
+	CmdAttachVolumes                     string = "attach_volumes"
+	CmdDetachVolumes                     string = "detach_volumes"
+	CmdUploadFiles                       string = "upload_files"
+	CmdDownloadFiles                     string = "download_files"
+	CmdInstallServices                   string = "install_services"
+	CmdConfigServices                    string = "config_services"
+	CmdStartServices                     string = "start_services"
+	CmdStopServices                      string = "stop_services"
+	CmdPingInstances                     string = "ping_instances"
+	CmdCreateSnapshotImages              string = "create_snapshot_images"
+	CmdCreateInstancesFromSnapshotImages string = "create_instances_from_snapshot_images"
+	CmdDeleteSnapshotImages              string = "delete_snapshot_images"
 )
 
 type SingleThreadCmdHandler func() (l.LogMsg, error)
@@ -121,6 +125,7 @@ Commands:
   %s
   %s <comma-separated list of instances to create volumes on, or 'all'>
   %s <comma-separated list of instances to attach volumes on, or 'all'>
+  %s <comma-separated list of instances to detach volumes on, or 'all'>
   %s <comma-separated list of instances to delete volumes on, or 'all'>
   %s <comma-separated list of instances to create, or 'all'>
   %s <comma-separated list of instances to delete, or 'all'>
@@ -129,6 +134,9 @@ Commands:
   %s <comma-separated list of instances to config services on, or 'all'>
   %s <comma-separated list of instances to start services on, or 'all'>
   %s <comma-separated list of instances to stop services on, or 'all'>
+  %s <comma-separated list of instances to create snapshot images for, or 'all'>
+  %s <comma-separated list of instances to create from snapshot images, or 'all'>
+  %s <comma-separated list of instances to delete snapshot images for, or 'all'>
 `,
 		CmdListDeploymentResources,
 
@@ -141,6 +149,7 @@ Commands:
 
 		CmdCreateVolumes,
 		CmdAttachVolumes,
+		CmdDetachVolumes,
 		CmdDeleteVolumes,
 
 		CmdCreateInstances,
@@ -151,6 +160,10 @@ Commands:
 		CmdConfigServices,
 		CmdStartServices,
 		CmdStopServices,
+
+		CmdCreateSnapshotImages,
+		CmdCreateInstancesFromSnapshotImages,
+		CmdDeleteSnapshotImages,
 	)
 	fmt.Printf("\nOptional parameters:\n")
 	flagset.PrintDefaults()
@@ -224,7 +237,11 @@ func main() {
 			errChan <- err
 			<-sem
 		}()
-	} else if os.Args[1] == CmdCreateInstances || os.Args[1] == CmdDeleteInstances {
+	} else if os.Args[1] == CmdCreateInstances ||
+		os.Args[1] == CmdDeleteInstances ||
+		os.Args[1] == CmdCreateSnapshotImages ||
+		os.Args[1] == CmdCreateInstancesFromSnapshotImages ||
+		os.Args[1] == CmdDeleteSnapshotImages {
 		nicknames, err := getNicknamesArg("instances")
 		if err != nil {
 			log.Fatalf(err.Error())
@@ -233,13 +250,15 @@ func main() {
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
+
 		errorsExpected = len(instances)
 		errChan = make(chan error, errorsExpected)
-		switch os.Args[1] {
-		case CmdCreateInstances:
+
+		usedFlavors := map[string]string{}
+		usedImages := map[string]string{}
+		if os.Args[1] == CmdCreateInstances ||
+			os.Args[1] == CmdCreateInstancesFromSnapshotImages {
 			// Make sure image/flavor is supported
-			usedFlavors := map[string]string{}
-			usedImages := map[string]string{}
 			usedKeypairs := map[string]struct{}{}
 			for _, instDef := range instances {
 				usedFlavors[instDef.FlavorName] = ""
@@ -260,6 +279,7 @@ func main() {
 				log.Fatalf(err.Error())
 			}
 
+			// Make sure the keypairs are there
 			logMsg, err = deployProvider.VerifyKeypairs(usedKeypairs)
 			logChan <- logMsg
 			DumpLogChan(logChan)
@@ -271,7 +291,10 @@ func main() {
 			for _, i := range instances {
 				fmt.Printf("ssh-keygen -f ~/.ssh/known_hosts -R %s;\n", i.BestIpAddress())
 			}
+		}
 
+		switch os.Args[1] {
+		case CmdCreateInstances:
 			for iNickname := range instances {
 				<-throttle
 				sem <- 1
@@ -291,6 +314,40 @@ func main() {
 				sem <- 1
 				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
 					logMsg, err := deployProvider.DeleteInstance(iNickname)
+					logChan <- logMsg
+					errChan <- err
+					<-sem
+				}(prjPair, logChan, errChan, iNickname)
+			}
+		case CmdCreateSnapshotImages:
+			for iNickname := range instances {
+				<-throttle
+				sem <- 1
+				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
+					logMsg, err := deployProvider.CreateSnapshotImage(iNickname)
+					logChan <- logMsg
+					errChan <- err
+					<-sem
+				}(prjPair, logChan, errChan, iNickname)
+			}
+		case CmdCreateInstancesFromSnapshotImages:
+			for iNickname := range instances {
+				<-throttle
+				sem <- 1
+				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
+					logMsg, err := deployProvider.CreateInstanceFromSnapshotImageAndWaitForCompletion(iNickname,
+						usedFlavors[prjPair.Live.Instances[iNickname].FlavorName])
+					logChan <- logMsg
+					errChan <- err
+					<-sem
+				}(prjPair, logChan, errChan, iNickname)
+			}
+		case CmdDeleteSnapshotImages:
+			for iNickname := range instances {
+				<-throttle
+				sem <- 1
+				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
+					logMsg, err := deployProvider.DeleteSnapshotImage(iNickname)
 					logChan <- logMsg
 					errChan <- err
 					<-sem
@@ -348,7 +405,7 @@ func main() {
 			}(&prjPair.Live, logChan, errChan, iDef)
 		}
 
-	} else if os.Args[1] == CmdCreateVolumes || os.Args[1] == CmdAttachVolumes || os.Args[1] == CmdDeleteVolumes {
+	} else if os.Args[1] == CmdCreateVolumes || os.Args[1] == CmdAttachVolumes || os.Args[1] == CmdDetachVolumes || os.Args[1] == CmdDeleteVolumes {
 		nicknames, err := getNicknamesArg("instances")
 		if err != nil {
 			log.Fatalf(err.Error())
@@ -364,7 +421,7 @@ func main() {
 			volCount += len(iDef.Volumes)
 		}
 		if volCount == 0 {
-			fmt.Printf("No volumes to create/attach/delete")
+			fmt.Printf("No volumes to create/attach/detach/delete")
 			os.Exit(0)
 		}
 		errorsExpected = volCount
@@ -384,6 +441,13 @@ func main() {
 				case CmdAttachVolumes:
 					go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
 						logMsg, err := deployProvider.AttachVolume(iNickname, volNickname)
+						logChan <- logMsg
+						errChan <- err
+						<-sem
+					}(prjPair, logChan, errChan, iNickname, volNickname)
+				case CmdDetachVolumes:
+					go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
+						logMsg, err := deployProvider.DetachVolume(iNickname, volNickname)
 						logChan <- logMsg
 						errChan <- err
 						<-sem

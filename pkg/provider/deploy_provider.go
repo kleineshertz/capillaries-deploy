@@ -45,8 +45,12 @@ type DeployProvider interface {
 	VerifyKeypairs(keypairMap map[string]struct{}) (l.LogMsg, error)
 	CreateInstanceAndWaitForCompletion(iNickname string, flavorId string, imageId string) (l.LogMsg, error)
 	DeleteInstance(iNickname string) (l.LogMsg, error)
+	CreateSnapshotImage(iNickname string) (l.LogMsg, error)
+	CreateInstanceFromSnapshotImageAndWaitForCompletion(iNickname string, flavorId string) (l.LogMsg, error)
+	DeleteSnapshotImage(iNickname string) (l.LogMsg, error)
 	CreateVolume(iNickname string, volNickname string) (l.LogMsg, error)
 	AttachVolume(iNickname string, volNickname string) (l.LogMsg, error)
+	DetachVolume(iNickname string, volNickname string) (l.LogMsg, error)
 	DeleteVolume(iNickname string, volNickname string) (l.LogMsg, error)
 }
 

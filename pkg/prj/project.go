@@ -34,7 +34,7 @@ func (t *ExecTimeouts) InitDefaults() {
 		t.CreateInstance = 120
 	}
 	if t.DeleteInstance == 0 {
-		t.DeleteInstance = 120
+		t.DeleteInstance = 600
 	}
 	if t.CreateNatGateway == 0 {
 		t.CreateNatGateway = 180 // It really may take that long
@@ -115,7 +115,6 @@ type VolumeDef struct {
 	Owner            string `json:"owner"`
 	AvailabilityZone string `json:"availability_zone"`
 	VolumeId         string `json:"id"`
-	AttachmentId     string `json:"attachment_id"`
 	Device           string `json:"device"`
 	BlockDeviceId    string `json:"block_device_id"`
 }
@@ -152,6 +151,7 @@ type InstanceDef struct {
 	SubnetType                     string                `json:"subnet_type"`
 	Volumes                        map[string]*VolumeDef `json:"volumes,omitempty"`
 	Id                             string                `json:"id"`
+	SnapshotImageId                string                `json:"snapshot_image_id"`
 	Service                        ServiceDef            `json:"service"`
 }
 
@@ -165,7 +165,6 @@ func (iDef *InstanceDef) BestIpAddress() string {
 func (iDef *InstanceDef) Clean() {
 	iDef.Id = ""
 	for _, volAttachDef := range iDef.Volumes {
-		volAttachDef.AttachmentId = ""
 		volAttachDef.Device = ""
 		volAttachDef.BlockDeviceId = ""
 		// Do not clean volAttachDef.VolumeId, it should be handled by delete_volumes
@@ -270,11 +269,6 @@ func (prjPair *ProjectPair) SetAttachedVolumeDevice(iNickname string, volNicknam
 	prjPair.Live.Instances[iNickname].Volumes[volNickname].Device = device
 }
 
-func (prjPair *ProjectPair) SetVolumeAttachmentId(iNickname string, volNickname string, newId string) {
-	prjPair.Template.Instances[iNickname].Volumes[volNickname].AttachmentId = newId
-	prjPair.Live.Instances[iNickname].Volumes[volNickname].AttachmentId = newId
-}
-
 func (prjPair *ProjectPair) SetVolumeBlockDeviceId(iNickname string, volNickname string, newId string) {
 	prjPair.Template.Instances[iNickname].Volumes[volNickname].BlockDeviceId = newId
 	prjPair.Live.Instances[iNickname].Volumes[volNickname].BlockDeviceId = newId
@@ -288,6 +282,11 @@ func (prjPair *ProjectPair) CleanInstance(iNickname string) {
 func (prjPair *ProjectPair) SetInstanceId(iNickname string, newId string) {
 	prjPair.Template.Instances[iNickname].Id = newId
 	prjPair.Live.Instances[iNickname].Id = newId
+}
+
+func (prjPair *ProjectPair) SetInstanceSnapshotImageId(iNickname string, newId string) {
+	prjPair.Template.Instances[iNickname].SnapshotImageId = newId
+	prjPair.Live.Instances[iNickname].SnapshotImageId = newId
 }
 
 func (prj *Project) validate() error {

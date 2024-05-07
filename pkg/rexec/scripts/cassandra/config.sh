@@ -12,7 +12,20 @@ if [ "$CASSANDRA_IP" = "" ]; then
   exit 1
 fi
 
-sudo systemctl stop cassandra
+if [ "$NVME_REGEX" = "" ]; then
+  echo Error, missing: export NVME_REGEX="nvme[0-9]n[0-9] 558.8G"
+  exit 1
+fi
+
+if [[ "$NVME_REGEX" != nvme* ]]; then
+  echo Error, NVME_REGEX has unexpected format $NVME_REGEX
+  exit 1
+fi
+
+if [ "$(sudo systemctl status cassandra | grep running)" != "" ]; then
+  >&2 echo Cassandra is running, stop it before configuring it
+  exit 1
+fi
 
 sudo sed -i -e "s~seeds:[\: \"a-zA-Z0-9\.,]*~seeds: $CASSANDRA_SEEDS~g" /etc/cassandra/cassandra.yaml
 sudo sed -i -e "s~listen_address:[\: \"a-zA-Z0-9\.]*~listen_address: $CASSANDRA_IP~g" /etc/cassandra/cassandra.yaml
@@ -62,8 +75,13 @@ sudo sed -i -e "s~write_request_timeout_in_ms:[ ]*[0-9]*~write_request_timeout_i
 
 sudo rm -fR /var/lib/cassandra/data/*
 sudo rm -fR /var/lib/cassandra/commitlog/*
-sudo rm -fR /data0/*
-sudo rm -fR /data1/*
+if [ ! -d "/data0" ]; then
+  sudo rm -fR /data0/*
+fi
+if [ ! -d "/data1" ]; then
+  sudo rm -fR /data1/*
+fi
+sudo rm -fR /var/lib/cassandra/saved_caches/*
 
 # To avoid "Cannot start node if snitch’s data center (dc1) differs from previous data center (datacenter1)"
 # error, keep using dc and rack variables as they are (dc1,rack1) in /etc/cassandra/cassandra-rackdc.properties
@@ -76,6 +94,41 @@ sudo rm -f rm /etc/cassandra/cassandra-topology.properties
 # No need to logrotate, Cassandra uses log4j, configure it conservatively
 sudo sed -i -e "s~<maxFileSize>[^<]*</maxFileSize>~<maxFileSize>10MB</maxFileSize>~g" /etc/cassandra/logback.xml
 sudo sed -i -e "s~<totalSizeCap>[^<]*</totalSizeCap>~<totalSizeCap>1GB</totalSizeCap>~g" /etc/cassandra/logback.xml
+
+mount_device(){
+	local mount_dir="/data"$1
+ 	local device_name=$2
+    echo Mounting $device_name at $mount_dir
+    if [ "$(lsblk -f | grep -E $device_name'[ ]+xfs')" == "" ]; then
+      echo Formatting partition
+	    sudo mkfs -t xfs /dev/$device_name
+    else
+      echo Partition already formatted
+    fi
+    if [ ! -d "$mount_dir" ]; then
+      echo Creating $mount_dir
+	  sudo mkdir $mount_dir
+    else
+      echo $mount_dir already created
+    fi
+    if [ "$(lsblk -f | grep $mount_dir)" == "" ]; then
+      echo Mounting...
+	  sudo mount /dev/$device_name $mount_dir
+    else
+      echo Already mounted
+    fi
+	sudo chown cassandra $mount_dir
+	sudo chmod 777 $mount_dir;
+}
+
+# "nvme[0-9]n[0-9] 558.8G"
+# "loop[0-9] [0-9.]+M"
+device_number=0
+lsblk | awk '{print $1,$4}' | grep -E "$NVME_REGEX" | awk '{print $1}' |
+while read -r device_name; do
+  mount_device $device_number $device_name
+  device_number=$((device_number+1)) 
+done
 
 sudo systemctl start cassandra
 if [ "$?" -ne "0" ]; then

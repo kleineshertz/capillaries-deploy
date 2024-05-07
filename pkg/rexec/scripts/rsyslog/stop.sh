@@ -1,0 +1,1 @@
+sudo systemctl stop rsyslog 2>/dev/null

@@ -32,32 +32,37 @@ init_volume_attachment()
 
   deviceBlockId=$(sudo blkid -s UUID -o value $deviceName)
 
-  local alreadyMounted=$(cat /etc/fstab | grep $volumeMountPath)
-
-  if [ "$alreadyMounted" = "" ]; then
-    # Create mount point
+  # Create mount point
+  if [ ! -d "$volumeMountPath" ]; then
     sudo mkdir -p $volumeMountPath
     if [ "$?" -ne "0" ]; then
       echo Error $?, cannot create mount dir $volumeMountPath
       return $?
     fi
+  fi
 
-    # Set permissions
-    sudo chmod $permissions $volumeMountPath
-    if [ "$?" -ne "0" ]; then
-		echo Error $?, cannot change $volumeMountPath permissions to $permissions
-        return $?
-    fi
+  # Mount point should exist by this time
+  sudo mount -o discard $deviceName $volumeMountPath
+  sudo systemctl daemon-reload
 
-	if [ -n "$owner" ]; then
-	    sudo chown $owner $volumeMountPath
-		if [ "$?" -ne "0" ]; then
-			echo Error $?, cannot change $volumeMountPath owner to $owner
-		    return $?
-		fi
+  # Set permissions
+  sudo chmod $permissions $volumeMountPath
+  if [ "$?" -ne "0" ]; then
+    echo Error $?, cannot change $volumeMountPath permissions to $permissions
+    return $?
+  fi
+
+  if [ -n "$owner" ]; then
+    sudo chown $owner $volumeMountPath
+	if [ "$?" -ne "0" ]; then
+	  echo Error $?, cannot change $volumeMountPath owner to $owner
+	  return $?
 	fi
+  fi
 
-    # Adds a line to /etc/fstab
+  local alreadyMounted=$(cat /etc/fstab | grep $volumeMountPath)
+  if [ "$alreadyMounted" = "" ]; then
+	  # Adds a line to /etc/fstab
     echo "UUID=$deviceBlockId   $volumeMountPath   ext4   defaults   0   2 " | sudo tee -a /etc/fstab
   fi
 
@@ -169,6 +174,18 @@ func AttachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 	}
 
 	return newDevice, nil
+}
+
+func DetachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string, instanceId string, attachedDevice string) error {
+	if volId == "" || instanceId == "" || attachedDevice == "" {
+		return fmt.Errorf("empty parameter not allowed: volId (%s), instanceId (%s), attachedDevice (%s)", volId, instanceId, attachedDevice)
+	}
+	out, err := client.DetachVolume(goCtx, &ec2.DetachVolumeInput{
+		VolumeId:   aws.String(volId),
+		InstanceId: aws.String(instanceId),
+		Device:     &attachedDevice})
+	lb.AddObject("DetachVolume", out)
+	return err
 }
 
 func DeleteVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string) error {

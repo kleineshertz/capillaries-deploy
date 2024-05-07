@@ -2,15 +2,6 @@ if [ "$JMX_EXPORTER_VERSION" = "" ]; then
   echo Error, missing: JMX_EXPORTER_VERSION=0.20.0
   exit 1
 fi
-if [ "$NVME_REGEX" = "" ]; then
-  echo Error, missing: NVME_REGEX="nvme[0-9]n[0-9] 558.8G"
-  exit 1
-fi
-
-if [[ "$NVME_REGEX" != nvme* ]]; then
-  echo Error, NVME_REGEX has unexpected format $NVME_REGEX
-  exit 1
-fi
 
 echo "deb https://debian.cassandra.apache.org 41x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
 # apt-key is deprecated. but still working, just silence it
@@ -113,6 +104,10 @@ sudo chown cassandra /etc/cassandra/jmx_exporter.yml
 # Let Cassandra know about JMX Exporter and config
 echo 'JVM_OPTS="$JVM_OPTS -javaagent:/usr/share/cassandra/lib/jmx_prometheus_javaagent-'$JMX_EXPORTER_VERSION'.jar=7070:/etc/cassandra/jmx_exporter.yml"' | sudo tee -a /etc/cassandra/cassandra-env.sh
 
+# For now stop it. We will reconfigure it anywways
+sudo systemctl stop cassandra
+
+
 # RAM disk size in GB
 # export RAM_DISK_SIZE=$(awk '/MemFree/ { printf "%.0f\n", $2/1024/2 }' /proc/meminfo)
 # echo $RAM_DISK_SIZE
@@ -126,23 +121,23 @@ echo 'JVM_OPTS="$JVM_OPTS -javaagent:/usr/share/cassandra/lib/jmx_prometheus_jav
 
 # It requires cassandra user, so do not run it before you install Cassandra
 # This will mount NVME devices to /data0, /data1, etc
-mount_device(){
-	mount_dir="/data"$1
-	device_name=$2
-	sudo mkfs -t xfs /dev/$device_name
-	sudo mkdir $mount_dir
-	sudo mount /dev/$device_name $mount_dir
-	sudo chown cassandra $mount_dir
-	sudo chmod 777 $mount_dir;
-}
+# mount_device(){
+# 	mount_dir="/data"$1
+# 	device_name=$2
+# 	sudo mkfs -t xfs /dev/$device_name
+# 	sudo mkdir $mount_dir
+# 	sudo mount /dev/$device_name $mount_dir
+# 	sudo chown cassandra $mount_dir
+# 	sudo chmod 777 $mount_dir;
+# }
 
-# "nvme[0-9]n[0-9] 558.8G"
-# "loop[0-9] [0-9.]+M"
-device_number=0
-lsblk | awk '{print $1,$4}' | grep -E "$NVME_REGEX" | awk '{print $1}' |
-while read -r device_name; do
-  mount_device $device_number $device_name
-  device_number=$((device_number+1)) 
-done
+# # "nvme[0-9]n[0-9] 558.8G"
+# # "loop[0-9] [0-9.]+M"
+# device_number=0
+# lsblk | awk '{print $1,$4}' | grep -E "$NVME_REGEX" | awk '{print $1}' |
+# while read -r device_name; do
+#   mount_device $device_number $device_name
+#   device_number=$((device_number+1)) 
+# done
 
-echo $device_number disks matching: $NVME_REGEX
+# echo $device_number disks matching: $NVME_REGEX

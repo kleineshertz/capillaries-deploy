@@ -38,20 +38,20 @@ func GetInstanceType(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder
 	return string(out.InstanceTypes[0].InstanceType), nil // "t2.2xlarge"
 }
 
-func VerifyImageId(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) (string, error) {
+func VerifyImageId(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) (string, []types.BlockDeviceMapping, error) {
 	if imageId == "" {
-		return "", fmt.Errorf("empty parameter not allowed: imageId (%s)", imageId)
+		return "", nil, fmt.Errorf("empty parameter not allowed: imageId (%s)", imageId)
 	}
 	out, err := client.DescribeImages(goCtx, &ec2.DescribeImagesInput{Filters: []types.Filter{{
 		Name: aws.String("image-id"), Values: []string{imageId}}}})
 	lb.AddObject("DescribeImages", out)
 	if err != nil {
-		return "", fmt.Errorf("cannot find image %s:%s", imageId, err.Error())
+		return "", nil, fmt.Errorf("cannot find image %s:%s", imageId, err.Error())
 	}
 	if len(out.Images) == 0 {
-		return "", fmt.Errorf("found zero results for image %s", imageId)
+		return "", nil, fmt.Errorf("found zero results for image %s", imageId)
 	}
-	return *out.Images[0].ImageId, nil
+	return *out.Images[0].ImageId, out.Images[0].BlockDeviceMappings, nil
 }
 
 func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, keypairName string) error {
@@ -145,6 +145,7 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, tags map[string]s
 	securityGroupId string,
 	rootKeyName string,
 	subnetId string,
+	blockDeviceMappings []types.BlockDeviceMapping,
 	timeoutSeconds int) (string, error) {
 
 	instanceType, err := stringToInstanceType(instanceTypeString)
@@ -159,14 +160,15 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, tags map[string]s
 
 	// NOTE: AWS doesn't allow to specify hostname on creation, it assigns names like "ip-10-5-0-11"
 	runOut, err := client.RunInstances(goCtx, &ec2.RunInstancesInput{
-		InstanceType:     instanceType,
-		ImageId:          aws.String(imageId),
-		MinCount:         aws.Int32(1),
-		MaxCount:         aws.Int32(1),
-		KeyName:          aws.String(rootKeyName),
-		SecurityGroupIds: []string{securityGroupId},
-		SubnetId:         aws.String(subnetId),
-		PrivateIpAddress: aws.String(privateIpAddress),
+		InstanceType:        instanceType,
+		ImageId:             aws.String(imageId),
+		MinCount:            aws.Int32(1),
+		MaxCount:            aws.Int32(1),
+		KeyName:             aws.String(rootKeyName),
+		SecurityGroupIds:    []string{securityGroupId},
+		SubnetId:            aws.String(subnetId),
+		PrivateIpAddress:    aws.String(privateIpAddress),
+		BlockDeviceMappings: blockDeviceMappings,
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeInstance,
 			Tags:         mapToTags(instName, tags)}}})
@@ -258,6 +260,48 @@ func DeleteInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 			return fmt.Errorf("giving up after waiting for %s to be deleted", instanceId)
 		}
 		time.Sleep(1 * time.Second)
+	}
+	return nil
+}
+
+// aws ec2 create-image --region "us-east-1" --instance-id i-03c10fd5566a08476 --name ami-i-03c10fd5566a08476 --no-reboot
+func CreateSnapshotImage(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, imageName string, instanceId string) (string, error) {
+	if imageName == "" || instanceId == "" {
+		return "", fmt.Errorf("empty parameter not allowed: imageName (%s), instanceId (%s)", imageName, instanceId)
+	}
+	out, err := client.CreateImage(goCtx, &ec2.CreateImageInput{
+		InstanceId: aws.String(instanceId),
+		Name:       aws.String(imageName),
+		TagSpecifications: []types.TagSpecification{{
+			ResourceType: types.ResourceTypeImage,
+			Tags:         mapToTags(imageName, tags)}}})
+	lb.AddObject("CreateImage", out)
+	if err != nil {
+		return "", fmt.Errorf("cannot create snapshot image %s from instance %s: %s", imageName, instanceId, err.Error())
+	}
+	return *out.ImageId, nil
+}
+
+func DeregisterImage(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) error {
+	if imageId == "" {
+		return fmt.Errorf("empty parameter not allowed: imageId (%s)", imageId)
+	}
+	out, err := client.DeregisterImage(goCtx, &ec2.DeregisterImageInput{ImageId: aws.String(imageId)})
+	lb.AddObject("DeregisterImage", out)
+	if err != nil {
+		return fmt.Errorf("cannot delete image %s:%s", imageId, err.Error())
+	}
+	return nil
+}
+
+func DeleteSnapshot(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volSnapshotId string) error {
+	if volSnapshotId == "" {
+		return fmt.Errorf("empty parameter not allowed: volSnapshotId (%s)", volSnapshotId)
+	}
+	out, err := client.DeleteSnapshot(goCtx, &ec2.DeleteSnapshotInput{SnapshotId: aws.String(volSnapshotId)})
+	lb.AddObject("DeleteSnapshot", out)
+	if err != nil {
+		return fmt.Errorf("cannot delete snapshot %s:%s", volSnapshotId, err.Error())
 	}
 	return nil
 }

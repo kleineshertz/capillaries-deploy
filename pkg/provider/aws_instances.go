@@ -2,10 +2,13 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
+	"github.com/capillariesio/capillaries-deploy/pkg/prj"
 )
 
 func (p *AwsDeployProvider) HarvestInstanceTypesByFlavorNames(flavorMap map[string]string) (l.LogMsg, error) {
@@ -25,7 +28,7 @@ func (p *AwsDeployProvider) HarvestImageIdsByImageNames(imageMap map[string]stri
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	for imageId := range imageMap {
-		checkedImageId, err := cldaws.VerifyImageId(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
+		checkedImageId, _, err := cldaws.VerifyImageId(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
 		if err != nil {
 			return lb.Complete(err)
 		}
@@ -46,9 +49,7 @@ func (p *AwsDeployProvider) VerifyKeypairs(keypairMap map[string]struct{}) (l.Lo
 	return lb.Complete(nil)
 }
 
-func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string, instanceTypeString string, imageId string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
-
+func internalCreate(p *AwsDeployProvider, lb *l.LogBuilder, iNickname string, instanceTypeString string, imageId string, blockDeviceMappings []types.BlockDeviceMapping) error {
 	instName := p.GetCtx().PrjPair.Live.Instances[iNickname].InstName
 	externalIpAddress := p.GetCtx().PrjPair.Live.Instances[iNickname].ExternalIpAddress
 
@@ -57,10 +58,10 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 	if externalIpAddress != "" {
 		associatedInstanceId, err := cldaws.GetPublicIpAssoiatedInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, externalIpAddress)
 		if err != nil {
-			return lb.Complete(err)
+			return err
 		}
 		if associatedInstanceId != "" {
-			return lb.Complete(fmt.Errorf("cannot create instance %s, floating ip %s is already assigned, see instance %s", instName, externalIpAddress, associatedInstanceId))
+			return fmt.Errorf("cannot create instance %s, floating ip %s is already assigned, see instance %s", instName, externalIpAddress, associatedInstanceId)
 		}
 	}
 
@@ -68,7 +69,7 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 
 	foundInstanceIdByName, foundInstanceStateByName, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, instName)
 	if err != nil {
-		return lb.Complete(err)
+		return err
 	}
 
 	if p.GetCtx().PrjPair.Live.Instances[iNickname].Id == "" {
@@ -76,21 +77,21 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 		if foundInstanceIdByName != "" && (foundInstanceStateByName == types.InstanceStateNameRunning || foundInstanceStateByName == types.InstanceStateNamePending) {
 			lb.Add(fmt.Sprintf("instance %s(%s) already there, updating project", instName, foundInstanceIdByName))
 			p.GetCtx().PrjPair.SetInstanceId(iNickname, foundInstanceIdByName)
-			return lb.Complete(nil)
+			return nil
 		}
 	} else {
 		if foundInstanceIdByName == "" {
 			// It was supposed to be there, but it's not present, complain
-			return lb.Complete(fmt.Errorf("requested instance id %s not present, consider removing this id from the project file", p.GetCtx().PrjPair.Live.Instances[iNickname].Id))
-		} else if p.GetCtx().PrjPair.Live.Instances[iNickname].Id != foundInstanceIdByName {
+			return fmt.Errorf("requested instance id %s not present, consider removing this id from the project file", p.GetCtx().PrjPair.Live.Instances[iNickname].Id)
+		} else if p.GetCtx().PrjPair.Live.Instances[iNickname].Id != foundInstanceIdByName && (foundInstanceStateByName == types.InstanceStateNameRunning || foundInstanceStateByName == types.InstanceStateNamePending) {
 			// It is already there, but has different id, complain
-			return lb.Complete(fmt.Errorf("requested instance id %s not matching existing instance id %s", p.GetCtx().PrjPair.Live.Instances[iNickname].Id, foundInstanceIdByName))
+			return fmt.Errorf("requested instance id %s not matching existing instance id %s", p.GetCtx().PrjPair.Live.Instances[iNickname].Id, foundInstanceIdByName)
 		}
 	}
 
 	if p.GetCtx().PrjPair.Live.Instances[iNickname].Id != "" {
 		lb.Add(fmt.Sprintf("instance %s(%s) already there, no need to create", instName, foundInstanceIdByName))
-		return lb.Complete(nil)
+		return nil
 	}
 
 	// Verify instance's subnet
@@ -98,16 +99,16 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 	subnetId := ""
 	if p.GetCtx().PrjPair.Live.Instances[iNickname].SubnetType == "public" {
 		if p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id == "" {
-			return lb.Complete(fmt.Errorf("requested instance %s is supposed to be in public subnet, but public subnet was not initialized yet", instName))
+			return fmt.Errorf("requested instance %s is supposed to be in public subnet, but public subnet was not initialized yet", instName)
 		}
 		subnetId = p.GetCtx().PrjPair.Live.Network.PublicSubnet.Id
 	} else if p.GetCtx().PrjPair.Live.Instances[iNickname].SubnetType == "private" {
 		if p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id == "" {
-			return lb.Complete(fmt.Errorf("requested instance %s is supposed to be in private subnet, but private subnet was not initialized yet", instName))
+			return fmt.Errorf("requested instance %s is supposed to be in private subnet, but private subnet was not initialized yet", instName)
 		}
 		subnetId = p.GetCtx().PrjPair.Live.Network.PrivateSubnet.Id
 	} else {
-		return lb.Complete(fmt.Errorf("requested instance %s is supposed to be in subnet of unknown type %s", instName, p.GetCtx().PrjPair.Live.Instances[iNickname].SubnetType))
+		return fmt.Errorf("requested instance %s is supposed to be in subnet of unknown type %s", instName, p.GetCtx().PrjPair.Live.Instances[iNickname].SubnetType)
 	}
 
 	// Verify/convert instance type
@@ -120,9 +121,10 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 		p.GetCtx().PrjPair.Live.SecurityGroups[p.GetCtx().PrjPair.Live.Instances[iNickname].SecurityGroupNickname].Id,
 		p.GetCtx().PrjPair.Live.Instances[iNickname].RootKeyName,
 		subnetId,
+		blockDeviceMappings,
 		p.GetCtx().PrjPair.Live.Timeouts.CreateInstance)
 	if err != nil {
-		return lb.Complete(err)
+		return err
 	}
 
 	p.GetCtx().PrjPair.SetInstanceId(iNickname, instanceId)
@@ -131,15 +133,35 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 		_, err = cldaws.AssignAwsFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb,
 			instanceId, p.GetCtx().PrjPair.Live.Instances[iNickname].ExternalIpAddress)
 		if err != nil {
-			return lb.Complete(err)
+			return err
 		}
 	}
 
-	return lb.Complete(nil)
+	return nil
+}
+
+func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string, flavorId string, imageId string) (l.LogMsg, error) {
+	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
+	return lb.Complete(internalCreate(p, lb, iNickname, flavorId, imageId, nil))
+}
+
+func getAttachedVolumes(iDef *prj.InstanceDef) []string {
+	attachedVols := make([]string, 0)
+	for volNickname, volDef := range iDef.Volumes {
+		if volDef.BlockDeviceId != "" || volDef.Device != "" {
+			attachedVols = append(attachedVols, volNickname)
+		}
+	}
+	return attachedVols
 }
 
 func (p *AwsDeployProvider) DeleteInstance(iNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
+
+	attachedVols := getAttachedVolumes(p.GetCtx().PrjPair.Live.Instances[iNickname])
+	if len(attachedVols) > 0 {
+		return lb.Complete(fmt.Errorf("cannot delete instance %s, detach volumes first, or fix the project file: %s", iNickname, strings.Join(attachedVols, ",")))
+	}
 
 	instName := p.GetCtx().PrjPair.Live.Instances[iNickname].InstName
 	if instName == "" {
@@ -160,7 +182,7 @@ func (p *AwsDeployProvider) DeleteInstance(iNickname string) (l.LogMsg, error) {
 		if foundId == "" {
 			// Already deleted, update project
 			p.GetCtx().PrjPair.CleanInstance(iNickname)
-		} else if p.GetCtx().PrjPair.Live.Instances[iNickname].Id != foundId {
+		} else if p.GetCtx().PrjPair.Live.Instances[iNickname].Id != foundId && (foundState == types.InstanceStateNameRunning || foundState == types.InstanceStateNamePending) {
 			// It is already there, but has different id, complain
 			return lb.Complete(fmt.Errorf("requested instance id %s not matching existing instance id %s", p.GetCtx().PrjPair.Live.Instances[iNickname].Id, foundId))
 		}
@@ -178,5 +200,87 @@ func (p *AwsDeployProvider) DeleteInstance(iNickname string) (l.LogMsg, error) {
 	}
 	p.GetCtx().PrjPair.CleanInstance(iNickname)
 
+	return lb.Complete(nil)
+}
+
+func (p *AwsDeployProvider) CreateSnapshotImage(iNickname string) (l.LogMsg, error) {
+	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
+
+	if p.GetCtx().PrjPair.Live.Instances[iNickname].SnapshotImageId != "" {
+		return lb.Complete(fmt.Errorf("cannot create snaphost image, delete existing %s first", p.GetCtx().PrjPair.Live.Instances[iNickname].SnapshotImageId))
+	}
+
+	attachedVols := getAttachedVolumes(p.GetCtx().PrjPair.Live.Instances[iNickname])
+	if len(attachedVols) > 0 {
+		return lb.Complete(fmt.Errorf("cannot create snapshot image from instance %s, detach volumes first, or fix the project file: %s", iNickname, strings.Join(attachedVols, ",")))
+	}
+
+	imageId, err := cldaws.CreateSnapshotImage(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
+		p.GetCtx().PrjPair.Live.Instances[iNickname].InstName,
+		p.GetCtx().PrjPair.Live.Instances[iNickname].Id)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	// Delete attached snapshot
+	_, blockDeviceMappings, err := cldaws.VerifyImageId(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	for i, mapping := range blockDeviceMappings {
+		if mapping.Ebs != nil {
+			if mapping.Ebs.SnapshotId != nil {
+				// We will not use this snapshot on restore, we will create a new one
+				blockDeviceMappings[i].Ebs.SnapshotId = nil
+			}
+		}
+	}
+
+	p.GetCtx().PrjPair.SetInstanceSnapshotImageId(iNickname, imageId)
+
+	return lb.Complete(nil)
+}
+
+// aws ec2 run-instances --region "us-east-1" --image-id ami-0bfdcfac85eb09d46 --count 1 --instance-type c7g.large --key-name $CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME --subnet-id subnet-09e2ba71bb1a5df94 --security-group-id sg-090b9d1ef7a1d1914 --private-ip-address 10.5.1.10
+// aws ec2 associate-address --instance-id i-0c4b32d20a1671b1e --public-ip 54.86.220.208
+func (p *AwsDeployProvider) CreateInstanceFromSnapshotImageAndWaitForCompletion(iNickname string, flavorId string) (l.LogMsg, error) {
+	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
+
+	imageId := p.GetCtx().PrjPair.Live.Instances[iNickname].SnapshotImageId
+
+	// Verify this image is available
+	if imageId == "" {
+		return lb.Complete(fmt.Errorf("cannot create instance for %s from snapshot image with empty name, did you create snapshot image for it?", iNickname))
+	}
+	checkedImageId, blockDeviceMappings, err := cldaws.VerifyImageId(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	for i, mapping := range blockDeviceMappings {
+		if mapping.Ebs != nil {
+			if mapping.Ebs.SnapshotId != nil {
+				// Do not use EBS volume snapshot, it's already gone
+				blockDeviceMappings[i].Ebs.SnapshotId = nil
+			}
+			if mapping.Ebs.VolumeSize == nil {
+				// By default, AWS instances run on a 8gb volumes (?)
+				blockDeviceMappings[i].Ebs.VolumeSize = aws.Int32(8)
+			}
+		}
+	}
+	return lb.Complete(internalCreate(p, lb, iNickname, flavorId, checkedImageId, blockDeviceMappings))
+}
+
+func (p *AwsDeployProvider) DeleteSnapshotImage(iNickname string) (l.LogMsg, error) {
+	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
+
+	imageId := p.GetCtx().PrjPair.Live.Instances[iNickname].SnapshotImageId
+	err := cldaws.DeregisterImage(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
+	if err != nil {
+		return lb.Complete(err)
+	}
+	p.GetCtx().PrjPair.SetInstanceSnapshotImageId(iNickname, "")
 	return lb.Complete(nil)
 }

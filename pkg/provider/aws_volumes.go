@@ -154,6 +154,44 @@ func (p *AwsDeployProvider) AttachVolume(iNickname string, volNickname string) (
 	return lb.Complete(nil)
 }
 
+func (p *AwsDeployProvider) DetachVolume(iNickname string, volNickname string) (l.LogMsg, error) {
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+
+	volDef := p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname]
+	if volDef.VolumeId == "" || volDef.Device == "" || volDef.MountPoint == "" {
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: volDef.VolumeId (%s), volDef.Device (%s), volDef.MountPoint (%s)", volDef.VolumeId, volDef.Device, volDef.MountPoint))
+	}
+
+	er := rexec.ExecSsh(
+		p.GetCtx().PrjPair.Live.SshConfig,
+		p.GetCtx().PrjPair.Live.Instances[iNickname].BestIpAddress(),
+		fmt.Sprintf("sudo umount -d %s", volDef.MountPoint), map[string]string{})
+	lb.Add(er.ToString())
+	if er.Error != nil {
+		return lb.Complete(fmt.Errorf("cannot umount volume %s on instance %s: %s", volNickname, iNickname, er.Error.Error()))
+	}
+
+	// er = rexec.ExecSsh(
+	// 	p.GetCtx().PrjPair.Live.SshConfig,
+	// 	p.GetCtx().PrjPair.Live.Instances[iNickname].BestIpAddress(),
+	// 	fmt.Sprintf("sudo rm -fR %s", volDef.MountPoint), map[string]string{})
+	// lb.Add(er.ToString())
+	// if er.Error != nil {
+	// 	return lb.Complete(fmt.Errorf("cannot delete mount point for volume %s on instance %s: %s", volNickname, iNickname, er.Error.Error()))
+	// }
+
+	instanceId := p.GetCtx().PrjPair.Live.Instances[iNickname].Id
+	err := cldaws.DetachVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.VolumeId, instanceId, volDef.Device)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	p.GetCtx().PrjPair.SetVolumeBlockDeviceId(iNickname, volNickname, "")
+	p.GetCtx().PrjPair.SetAttachedVolumeDevice(iNickname, volNickname, "")
+
+	return lb.Complete(nil)
+}
+
 func (p *AwsDeployProvider) DeleteVolume(iNickname string, volNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 

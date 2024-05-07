@@ -48,7 +48,7 @@
   
   // Instances
   local instance_image_name = 
-    if architecture == 'arm64' then 'ami-064b469793e32e5d2' // ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20230904
+    if architecture == 'arm64' then 'ami-09b2701695676705d'// ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20240117 // 'ami-064b469793e32e5d2' ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20230904
     else if architecture == 'amd64' then 'ami-0d8583a0d8d6dd14f' //ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-amd64-server-20230714
     else 'unknown-architecture-unknown-image',
   
@@ -375,12 +375,16 @@
             'scripts/nginx/config_rabbitmq_reverse_proxy.sh',
           ],
           start: [
+            'scripts/rsyslog/start.sh',
+            'scripts/logrotate/start.sh',
             'scripts/webapi/start.sh',
             'scripts/nginx/start.sh',
           ],
           stop: [
             'scripts/webapi/stop.sh',
             'scripts/nginx/stop.sh',
+            'scripts/logrotate/stop.sh',
+            'scripts/rsyslog/stop.sh',
           ],
         },
       },

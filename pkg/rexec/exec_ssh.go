@@ -156,6 +156,12 @@ func ExecSsh(sshConfig *SshConfigDef, ipAddress string, cmd string, envVars map[
 		if len(stderr.String()) > 0 {
 			err = fmt.Errorf("%s", stderr.String())
 		}
+	} else {
+		if len(stderr.String()) > 0 {
+			// Add first string of stderr to the error
+			s := strings.Split(stderr.String(), "\n")
+			err = fmt.Errorf("%s;%s", err.Error(), s[0])
+		}
 	}
 
 	er := ExecResult{cmd, stdout.String(), stderr.String(), elapsed, err}

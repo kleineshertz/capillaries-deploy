@@ -88,6 +88,14 @@ func getVpcBilledState(state types.VpcState) BilledState {
 	}
 }
 
+func getImageBilledState(state types.ImageState) BilledState {
+	if state == types.ImageStateAvailable || state == types.ImageStateDisabled || state == types.ImageStateError || state == types.ImageStatePending || state == types.ImageStateTransient {
+		return BilledStateBilled
+	} else {
+		return BilledStateUnbilled
+	}
+}
+
 func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource) (string, BilledState, error) {
 	switch r.Svc {
 	case "ec2":
@@ -124,11 +132,14 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 				}
 				return "", "", err
 			}
-			return fmt.Sprintf("%d", len(out.RouteTables[0].Routes)), BilledStateBilled, nil
+			return fmt.Sprintf("%droutes", len(out.RouteTables[0].Routes)), BilledStateBilled, nil
 		case "instance":
 			out, err := ec2Client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{InstanceIds: []string{r.Id}})
 			if err != nil {
 				return "", "", err
+			}
+			if len(out.Reservations) == 0 || len(out.Reservations[0].Instances) == 0 {
+				return "notfound", BilledStateUnbilled, nil
 			}
 			return string(out.Reservations[0].Instances[0].State.Name), getInstanceBilledState(out.Reservations[0].Instances[0].State.Name), nil
 		case "volume":
@@ -152,9 +163,21 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 		case "internet-gateway":
 			out, err := ec2Client.DescribeInternetGateways(goCtx, &ec2.DescribeInternetGatewaysInput{InternetGatewayIds: []string{r.Id}})
 			if err != nil {
+				if strings.Contains(err.Error(), "does not exist") {
+					return "doesnotexist", BilledStateUnbilled, nil
+				}
 				return "", "", err
 			}
-			return string(len(out.InternetGateways[0].Attachments)), BilledStateBilled, nil
+			return fmt.Sprintf("%dattachments", len(out.InternetGateways[0].Attachments)), BilledStateBilled, nil
+		case "image":
+			out, err := ec2Client.DescribeImages(goCtx, &ec2.DescribeImagesInput{ImageIds: []string{r.Id}})
+			if err != nil {
+				if strings.Contains(err.Error(), "does not exist") {
+					return "doesnotexist", BilledStateUnbilled, nil
+				}
+				return "", "", err
+			}
+			return string(out.Images[0].State), getImageBilledState(out.Images[0].State), nil
 		default:
 			return "", "", fmt.Errorf("unsupported ec2 type %s", r.Type)
 		}
