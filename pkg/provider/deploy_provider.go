@@ -41,7 +41,7 @@ type DeployProvider interface {
 	CreateNetworking() (l.LogMsg, error)
 	DeleteNetworking() (l.LogMsg, error)
 	HarvestInstanceTypesByFlavorNames(flavorMap map[string]string) (l.LogMsg, error)
-	HarvestImageIdsByImageNames(imageMap map[string]string) (l.LogMsg, error)
+	HarvestImageIds(imageMap map[string]bool) (l.LogMsg, error)
 	VerifyKeypairs(keypairMap map[string]struct{}) (l.LogMsg, error)
 	CreateInstanceAndWaitForCompletion(iNickname string, flavorId string, imageId string) (l.LogMsg, error)
 	DeleteInstance(iNickname string) (l.LogMsg, error)

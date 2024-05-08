@@ -13,7 +13,7 @@ go build ./pkg/cmd/capideploy/capideploy.go
 ./capideploy list_deployment_resources -prj=./sample.json --verbose > deploy.log
 
 set +x
-
+SECONDS=0
 export BILLED_RESOURCES=$(cat deploy.log | grep ",billed")
 if [ "$BILLED_RESOURCES" != "" ]; then
   echo "This deployment has resources that may be still/already active, please check the log"
@@ -53,7 +53,7 @@ set +e
 until ./capideploy ping_instances '*' -prj=sample.json; do echo "Ping failed, waiting..."; sleep 5; done
 set -e
 
-./capideploy attach_volumes "*" -prj=sample.json --verbose >> deploy.log
+./capideploy attach_volumes "bastion" -prj=sample.json --verbose >> deploy.log
 ./capideploy install_services "*" -prj=sample.json --verbose >> deploy.log
 
 # Cassandra requires special treatment: stop and start
@@ -64,6 +64,9 @@ sleep 5
 ./capideploy config_services "bastion,rabbitmq,prometheus,daemon*" -prj=sample.json --verbose >> deploy.log
 
 ssh -o StrictHostKeyChecking=no -i $CAPIDEPLOY_SSH_PRIVATE_KEY_PATH -J $BASTION_IP $CAPIDEPLOY_SSH_USER@10.5.0.11 'nodetool describecluster;nodetool status'
+
+duration=$SECONDS
+echo "$(($duration / 60))m $(($duration % 60))s elapsed."
 
 set +x
 echo To run commands against this deployment, you will probably need this:

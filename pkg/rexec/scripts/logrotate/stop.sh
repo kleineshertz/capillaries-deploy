@@ -1,1 +1,2 @@
-sudo systemctl stop logrotate 2>/dev/null
+sudo systemctl stop logrotate.timer
+sudo systemctl stop logrotate

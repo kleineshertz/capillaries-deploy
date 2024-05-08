@@ -24,15 +24,15 @@ func (p *AwsDeployProvider) HarvestInstanceTypesByFlavorNames(flavorMap map[stri
 	return lb.Complete(nil)
 }
 
-func (p *AwsDeployProvider) HarvestImageIdsByImageNames(imageMap map[string]string) (l.LogMsg, error) {
+func (p *AwsDeployProvider) HarvestImageIds(imageMap map[string]bool) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	for imageId := range imageMap {
-		checkedImageId, _, err := cldaws.VerifyImageId(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
+		_, _, err := cldaws.GetImageInfo(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
 		if err != nil {
 			return lb.Complete(err)
 		}
-		imageMap[imageId] = checkedImageId
+		imageMap[imageId] = true
 	}
 	return lb.Complete(nil)
 }
@@ -215,24 +215,35 @@ func (p *AwsDeployProvider) CreateSnapshotImage(iNickname string) (l.LogMsg, err
 		return lb.Complete(fmt.Errorf("cannot create snapshot image from instance %s, detach volumes first, or fix the project file: %s", iNickname, strings.Join(attachedVols, ",")))
 	}
 
-	imageId, err := cldaws.CreateSnapshotImage(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
+	imageId, err := cldaws.CreateImageFromInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
 		p.GetCtx().PrjPair.Live.Instances[iNickname].InstName,
-		p.GetCtx().PrjPair.Live.Instances[iNickname].Id)
+		p.GetCtx().PrjPair.Live.Instances[iNickname].Id,
+		p.GetCtx().PrjPair.Live.Timeouts.CreateImage)
 	if err != nil {
 		return lb.Complete(err)
 	}
+
+	// TODO: do not delete snapshot
 
 	// Delete attached snapshot
-	_, blockDeviceMappings, err := cldaws.VerifyImageId(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
+	_, blockDeviceMappings, err := cldaws.GetImageInfo(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	for i, mapping := range blockDeviceMappings {
+	for _, mapping := range blockDeviceMappings {
 		if mapping.Ebs != nil {
-			if mapping.Ebs.SnapshotId != nil {
+			if mapping.Ebs.SnapshotId != nil || *mapping.Ebs.SnapshotId != "" {
+				// Tag it just in case we are not able to delete it: at least it will appear in the list of billed items
+				cldaws.TagResource(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, *mapping.Ebs.SnapshotId, p.GetCtx().PrjPair.Live.Instances[iNickname].InstName, p.GetCtx().Tags)
+				if err != nil {
+					return lb.Complete(err)
+				}
 				// We will not use this snapshot on restore, we will create a new one
-				blockDeviceMappings[i].Ebs.SnapshotId = nil
+				err := cldaws.DeleteSnapshot(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, *mapping.Ebs.SnapshotId)
+				if err != nil {
+					return lb.Complete(err)
+				}
 			}
 		}
 	}
@@ -253,10 +264,16 @@ func (p *AwsDeployProvider) CreateInstanceFromSnapshotImageAndWaitForCompletion(
 	if imageId == "" {
 		return lb.Complete(fmt.Errorf("cannot create instance for %s from snapshot image with empty name, did you create snapshot image for it?", iNickname))
 	}
-	checkedImageId, blockDeviceMappings, err := cldaws.VerifyImageId(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
+	state, blockDeviceMappings, err := cldaws.GetImageInfo(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
 	if err != nil {
 		return lb.Complete(err)
 	}
+
+	if state != types.ImageStateAvailable {
+		return lb.Complete(fmt.Errorf("cannot create instance from image %s/%s, image state is %s", iNickname, flavorId, string(state)))
+	}
+
+	// TODO: use snapshot id, do not create a new one
 
 	for i, mapping := range blockDeviceMappings {
 		if mapping.Ebs != nil {
@@ -270,17 +287,22 @@ func (p *AwsDeployProvider) CreateInstanceFromSnapshotImageAndWaitForCompletion(
 			}
 		}
 	}
-	return lb.Complete(internalCreate(p, lb, iNickname, flavorId, checkedImageId, blockDeviceMappings))
+	return lb.Complete(internalCreate(p, lb, iNickname, flavorId, imageId, blockDeviceMappings))
 }
 
 func (p *AwsDeployProvider) DeleteSnapshotImage(iNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
+
+	// TODO: get EBS snapshot id for this image
 
 	imageId := p.GetCtx().PrjPair.Live.Instances[iNickname].SnapshotImageId
 	err := cldaws.DeregisterImage(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
 	if err != nil {
 		return lb.Complete(err)
 	}
+
+	// TODO: delete snapshot
+
 	p.GetCtx().PrjPair.SetInstanceSnapshotImageId(iNickname, "")
 	return lb.Complete(nil)
 }

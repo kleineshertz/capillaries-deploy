@@ -38,7 +38,7 @@ func GetInstanceType(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder
 	return string(out.InstanceTypes[0].InstanceType), nil // "t2.2xlarge"
 }
 
-func VerifyImageId(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) (string, []types.BlockDeviceMapping, error) {
+func GetImageInfo(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) (types.ImageState, []types.BlockDeviceMapping, error) {
 	if imageId == "" {
 		return "", nil, fmt.Errorf("empty parameter not allowed: imageId (%s)", imageId)
 	}
@@ -51,7 +51,7 @@ func VerifyImageId(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, 
 	if len(out.Images) == 0 {
 		return "", nil, fmt.Errorf("found zero results for image %s", imageId)
 	}
-	return *out.Images[0].ImageId, out.Images[0].BlockDeviceMappings, nil
+	return out.Images[0].State, out.Images[0].BlockDeviceMappings, nil
 }
 
 func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, keypairName string) error {
@@ -265,7 +265,7 @@ func DeleteInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 }
 
 // aws ec2 create-image --region "us-east-1" --instance-id i-03c10fd5566a08476 --name ami-i-03c10fd5566a08476 --no-reboot
-func CreateSnapshotImage(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, imageName string, instanceId string) (string, error) {
+func CreateImageFromInstance(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, imageName string, instanceId string, timeoutSeconds int) (string, error) {
 	if imageName == "" || instanceId == "" {
 		return "", fmt.Errorf("empty parameter not allowed: imageName (%s), instanceId (%s)", imageName, instanceId)
 	}
@@ -279,7 +279,27 @@ func CreateSnapshotImage(client *ec2.Client, goCtx context.Context, tags map[str
 	if err != nil {
 		return "", fmt.Errorf("cannot create snapshot image %s from instance %s: %s", imageName, instanceId, err.Error())
 	}
-	return *out.ImageId, nil
+
+	imageId := *out.ImageId
+
+	startWaitTs := time.Now()
+	for {
+		state, _, err := GetImageInfo(client, goCtx, lb, imageId)
+		if err != nil {
+			return "", err
+		}
+		if state == types.ImageStateAvailable {
+			break
+		}
+		if state != types.ImageStatePending {
+			return "", fmt.Errorf("image %s(%s) was built, but the status is unknown: %s", imageName, imageId, state)
+		}
+		if time.Since(startWaitTs).Seconds() > float64(timeoutSeconds) {
+			return "", fmt.Errorf("giving up after waiting for image %s(%s) to be created for %ds", imageName, imageId, timeoutSeconds)
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return imageId, nil
 }
 
 func DeregisterImage(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) error {

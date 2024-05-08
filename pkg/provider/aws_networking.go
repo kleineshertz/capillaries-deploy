@@ -308,7 +308,7 @@ func ensureInternetGatewayAndRoutePublicSubnet(p *AwsDeployProvider) (l.LogMsg, 
 	// (optional) tag this route table for operator's convenience
 
 	routeTableName := p.GetCtx().PrjPair.Live.Network.PublicSubnet.Name + "_rt_to_igw"
-	if err := cldaws.TagResourceName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, routeTableId, routeTableName); err != nil {
+	if err := cldaws.TagResource(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, routeTableId, routeTableName, nil); err != nil {
 		return lb.Complete(err)
 	}
 

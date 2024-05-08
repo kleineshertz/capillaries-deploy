@@ -2,6 +2,8 @@
 set -e # Exit on failure
 set -x # Print commands
 
+SECONDS=0
+
 ./capideploy create_instances_from_snapshot_images "*" -prj=sample.json --verbose
 
 set +x
@@ -15,5 +17,8 @@ set -x
 ./capideploy stop_services "cass*" -prj=sample.json --verbose
 sleep 5
 ./capideploy start_services "cass*" -prj=sample.json --verbose
+
+duration=$SECONDS
+echo "$(($duration / 60))m $(($duration % 60))s elapsed."
 
 ./capideploy list_deployment_resources -prj=./sample.json --verbose

@@ -1,1 +1,2 @@
-sudo systemctl stop rsyslog 2>/dev/null
+sudo systemctl stop syslog.socket
+sudo systemctl stop rsyslog

@@ -255,14 +255,14 @@ func main() {
 		errChan = make(chan error, errorsExpected)
 
 		usedFlavors := map[string]string{}
-		usedImages := map[string]string{}
+		usedImages := map[string]bool{}
 		if os.Args[1] == CmdCreateInstances ||
 			os.Args[1] == CmdCreateInstancesFromSnapshotImages {
 			// Make sure image/flavor is supported
 			usedKeypairs := map[string]struct{}{}
 			for _, instDef := range instances {
 				usedFlavors[instDef.FlavorName] = ""
-				usedImages[instDef.ImageName] = ""
+				usedImages[instDef.ImageId] = false
 				usedKeypairs[instDef.RootKeyName] = struct{}{}
 			}
 			logMsg, err := deployProvider.HarvestInstanceTypesByFlavorNames(usedFlavors)
@@ -272,7 +272,7 @@ func main() {
 				log.Fatalf(err.Error())
 			}
 
-			logMsg, err = deployProvider.HarvestImageIdsByImageNames(usedImages)
+			logMsg, err = deployProvider.HarvestImageIds(usedImages)
 			logChan <- logMsg
 			DumpLogChan(logChan)
 			if err != nil {
@@ -302,7 +302,7 @@ func main() {
 					logMsg, err := deployProvider.CreateInstanceAndWaitForCompletion(
 						iNickname,
 						usedFlavors[prjPair.Live.Instances[iNickname].FlavorName],
-						usedImages[prjPair.Live.Instances[iNickname].ImageName])
+						prjPair.Live.Instances[iNickname].ImageId)
 					logChan <- logMsg
 					errChan <- err
 					<-sem

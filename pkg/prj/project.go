@@ -27,6 +27,7 @@ type ExecTimeouts struct {
 	DeleteNatGateway int `json:"delete_nat_gateway"`
 	CreateNetwork    int `json:"create_network"`
 	AttachVolume     int `json:"attach_volume"`
+	CreateImage      int `json:"create_image"`
 }
 
 func (t *ExecTimeouts) InitDefaults() {
@@ -47,6 +48,9 @@ func (t *ExecTimeouts) InitDefaults() {
 	}
 	if t.AttachVolume == 0 {
 		t.AttachVolume = 30
+	}
+	if t.CreateImage == 0 {
+		t.CreateImage = 600
 	}
 }
 
@@ -147,7 +151,7 @@ type InstanceDef struct {
 	UsesSshConfigExternalIpAddress bool                  `json:"uses_ssh_config_external_ip_address,omitempty"`
 	ExternalIpAddress              string                `json:"external_ip_address,omitempty"`
 	FlavorName                     string                `json:"flavor"`
-	ImageName                      string                `json:"image"`
+	ImageId                        string                `json:"image"`
 	SubnetType                     string                `json:"subnet_type"`
 	Volumes                        map[string]*VolumeDef `json:"volumes,omitempty"`
 	Id                             string                `json:"id"`
