@@ -47,7 +47,7 @@
   local cassandra_hosts = "'[\"" + std.join('","', cassandra_ips) + "\"]'",  // Used by daemons "'[\"10.5.0.11\",\"10.5.0.12\",\"10.5.0.13\",\"10.5.0.14\",\"10.5.0.15\",\"10.5.0.16\",\"10.5.0.17\",\"10.5.0.18\"]'",
   
   // Instances
-  local instance_image_name = 
+  local instance_image_id = 
     if architecture == 'arm64' then 'ami-09b2701695676705d'// ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20240117 // 'ami-064b469793e32e5d2' ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20230904
     else if architecture == 'amd64' then 'ami-0d8583a0d8d6dd14f' //ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-amd64-server-20230714
     else 'unknown-architecture-unknown-image',
@@ -317,7 +317,7 @@
       ip_address: internal_bastion_ip,
       uses_ssh_config_external_ip_address: true,
       flavor: instance_flavor_bastion,
-      image: instance_image_name,
+      image_id: instance_image_id,
       subnet_type: bastion_subnet_type,
       volumes: {
         'log': {
@@ -399,7 +399,7 @@
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: rabbitmq_ip,
       flavor: instance_flavor_rabbitmq,
-      image: instance_image_name,
+      image_id: instance_image_id,
       subnet_type: 'private',
       service: {
         env: {
@@ -440,7 +440,7 @@
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: prometheus_ip,
       flavor: instance_flavor_prometheus,
-      image: instance_image_name,
+      image_id: instance_image_id,
       subnet_type: 'private',
       service: {
         env: {
@@ -477,7 +477,7 @@
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: e.ip_address,
       flavor: instance_flavor_cassandra,
-      image: instance_image_name,
+      image_id: instance_image_id,
       subnet_type: 'private',
       service: {
         env: {
@@ -526,7 +526,7 @@
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: e.ip_address,
       flavor: instance_flavor_daemon,
-      image: instance_image_name,
+      image_id: instance_image_id,
       subnet_type: 'private',
       service: {
         env: {

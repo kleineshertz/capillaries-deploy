@@ -11,11 +11,10 @@ until ./capideploy ping_instances '*' -prj=sample.json; do echo "Ping failed, wa
 set -x
 
 ./capideploy attach_volumes "bastion" -prj=sample.json --verbose
-./capideploy config_services "*" -prj=sample.json --verbose
+./capideploy start_services "*" -prj=sample.json --verbose
 
 # Cassandra requires one more cycle to embrace the fact that data/log firectories /data0,/data1 are gone
 ./capideploy stop_services "cass*" -prj=sample.json --verbose
-sleep 5
 ./capideploy start_services "cass*" -prj=sample.json --verbose
 
 duration=$SECONDS

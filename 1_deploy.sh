@@ -58,7 +58,6 @@ set -e
 
 # Cassandra requires special treatment: stop and start
 ./capideploy stop_services "cass*" -prj=sample.json --verbose >> deploy.log
-sleep 5
 ./capideploy config_services "cass*" -prj=sample.json --verbose >> deploy.log
 
 ./capideploy config_services "bastion,rabbitmq,prometheus,daemon*" -prj=sample.json --verbose >> deploy.log

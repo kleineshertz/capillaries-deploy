@@ -151,7 +151,7 @@ type InstanceDef struct {
 	UsesSshConfigExternalIpAddress bool                  `json:"uses_ssh_config_external_ip_address,omitempty"`
 	ExternalIpAddress              string                `json:"external_ip_address,omitempty"`
 	FlavorName                     string                `json:"flavor"`
-	ImageId                        string                `json:"image"`
+	ImageId                        string                `json:"image_id"`
 	SubnetType                     string                `json:"subnet_type"`
 	Volumes                        map[string]*VolumeDef `json:"volumes,omitempty"`
 	Id                             string                `json:"id"`

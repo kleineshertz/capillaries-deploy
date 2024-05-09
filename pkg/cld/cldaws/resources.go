@@ -3,6 +3,7 @@ package cldaws
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -26,12 +27,13 @@ type Resource struct {
 	Svc    string
 	Type   string
 	Id     string
+	Name   string
 	State  string
 	Billed BilledState
 }
 
 func (r *Resource) String() string {
-	return fmt.Sprintf("%s,%s,%s,%s,%s", r.Svc, r.Type, r.Id, r.State, r.Billed)
+	return fmt.Sprintf("%s,%s,%s,%s,%s,%s", r.Svc, r.Type, r.Name, r.Id, r.State, r.Billed)
 }
 
 func arnToResource(arn string) Resource {
@@ -95,6 +97,9 @@ func getImageBilledState(state types.ImageState) BilledState {
 		return BilledStateUnbilled
 	}
 }
+func getSnapshotBilledState(_ types.SnapshotState) BilledState {
+	return BilledStateBilled
+}
 
 func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource) (string, BilledState, error) {
 	switch r.Svc {
@@ -119,11 +124,11 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			}
 			return string(out.Subnets[0].State), BilledStateBilled, nil
 		case "security-group":
-			out, err := ec2Client.DescribeSecurityGroups(goCtx, &ec2.DescribeSecurityGroupsInput{GroupIds: []string{r.Id}})
+			_, err := ec2Client.DescribeSecurityGroups(goCtx, &ec2.DescribeSecurityGroupsInput{GroupIds: []string{r.Id}})
 			if err != nil {
 				return "", "", err
 			}
-			return string(*out.SecurityGroups[0].GroupName), BilledStateBilled, nil
+			return "present", BilledStateBilled, nil
 		case "route-table":
 			out, err := ec2Client.DescribeRouteTables(goCtx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{r.Id}})
 			if err != nil {
@@ -178,6 +183,16 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 				return "", "", err
 			}
 			return string(out.Images[0].State), getImageBilledState(out.Images[0].State), nil
+
+		case "snapshot":
+			out, err := ec2Client.DescribeSnapshots(goCtx, &ec2.DescribeSnapshotsInput{SnapshotIds: []string{r.Id}})
+			if err != nil {
+				if strings.Contains(err.Error(), "does not exist") {
+					return "doesnotexist", BilledStateUnbilled, nil
+				}
+				return "", "", err
+			}
+			return string(out.Snapshots[0].State), getSnapshotBilledState(out.Snapshots[0].State), nil
 		default:
 			return "", "", fmt.Errorf("unsupported ec2 type %s", r.Type)
 		}
@@ -186,8 +201,22 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 	}
 }
 
+func getResourceNameTag(ec2Client *ec2.Client, goCtx context.Context, resourceId string) (string, error) {
+	out, err := ec2Client.DescribeTags(goCtx, &ec2.DescribeTagsInput{Filters: []types.Filter{{
+		Name: aws.String("resource-id"), Values: []string{resourceId}}}})
+	if err != nil {
+		return "", err
+	}
+	for _, tagDesc := range out.Tags {
+		if *tagDesc.Key == "Name" {
+			return *tagDesc.Value, nil
+		}
+	}
+	return "", nil
+}
+
 func GetResourcesByTag(tClient *tagging.Client, ccClient *cc.Client, ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, region string, tagName string, tagVal string) ([]string, error) {
-	resources := make([]string, 0)
+	resources := make([]*Resource, 0)
 	paginationToken := ""
 	for {
 		out, err := tClient.GetResources(goCtx, &tagging.GetResourcesInput{
@@ -207,12 +236,45 @@ func GetResourcesByTag(tClient *tagging.Client, ccClient *cc.Client, ec2Client *
 				res.State = state
 				res.Billed = billedState
 			}
-			resources = append(resources, res.String())
+			name, err := getResourceNameTag(ec2Client, goCtx, res.Id)
+			if err != nil {
+				lb.Add(err.Error())
+			} else {
+				res.Name = name
+			}
+			resources = append(resources, &res)
 		}
 		paginationToken = *out.PaginationToken
 		if *out.PaginationToken == "" {
 			break
 		}
 	}
-	return resources, nil
+
+	sort.Slice(resources, func(i, j int) bool {
+		if resources[i].Svc < resources[j].Svc {
+			return true
+		} else if resources[i].Svc > resources[j].Svc {
+			return false
+		} else if resources[i].Type < resources[j].Type {
+			return true
+		} else if resources[i].Type > resources[j].Type {
+			return false
+		} else if resources[i].Name < resources[j].Name {
+			return true
+		} else if resources[i].Name > resources[j].Name {
+			return false
+		} else if resources[i].Id < resources[j].Id {
+			return true
+		} else if resources[i].Id > resources[j].Id {
+			return false
+		} else {
+			return true
+		}
+	})
+
+	result := make([]string, len(resources))
+	for i, r := range resources {
+		result[i] = r.String()
+	}
+	return result, nil
 }

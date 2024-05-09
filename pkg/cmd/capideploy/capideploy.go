@@ -182,7 +182,7 @@ func main() {
 	cmdStartTs := time.Now()
 
 	throttle := time.Tick(time.Second) // One call per second, to avoid error 429 on openstack/aws/azure calls
-	const maxWorkerThreads int = 10
+	const maxWorkerThreads int = 50
 	var logChan = make(chan l.LogMsg, maxWorkerThreads*5)
 	var sem = make(chan int, maxWorkerThreads)
 	var errChan chan error

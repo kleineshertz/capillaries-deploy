@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
@@ -223,9 +222,6 @@ func (p *AwsDeployProvider) CreateSnapshotImage(iNickname string) (l.LogMsg, err
 		return lb.Complete(err)
 	}
 
-	// TODO: do not delete snapshot
-
-	// Delete attached snapshot
 	_, blockDeviceMappings, err := cldaws.GetImageInfo(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
 	if err != nil {
 		return lb.Complete(err)
@@ -233,14 +229,9 @@ func (p *AwsDeployProvider) CreateSnapshotImage(iNickname string) (l.LogMsg, err
 
 	for _, mapping := range blockDeviceMappings {
 		if mapping.Ebs != nil {
-			if mapping.Ebs.SnapshotId != nil || *mapping.Ebs.SnapshotId != "" {
-				// Tag it just in case we are not able to delete it: at least it will appear in the list of billed items
+			if mapping.Ebs.SnapshotId != nil && *mapping.Ebs.SnapshotId != "" {
+				// Tag it so it appears in the list of billed items
 				cldaws.TagResource(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, *mapping.Ebs.SnapshotId, p.GetCtx().PrjPair.Live.Instances[iNickname].InstName, p.GetCtx().Tags)
-				if err != nil {
-					return lb.Complete(err)
-				}
-				// We will not use this snapshot on restore, we will create a new one
-				err := cldaws.DeleteSnapshot(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, *mapping.Ebs.SnapshotId)
 				if err != nil {
 					return lb.Complete(err)
 				}
@@ -273,35 +264,54 @@ func (p *AwsDeployProvider) CreateInstanceFromSnapshotImageAndWaitForCompletion(
 		return lb.Complete(fmt.Errorf("cannot create instance from image %s/%s, image state is %s", iNickname, flavorId, string(state)))
 	}
 
-	// TODO: use snapshot id, do not create a new one
-
-	for i, mapping := range blockDeviceMappings {
+	isSnapshotIdFound := false
+	for _, mapping := range blockDeviceMappings {
 		if mapping.Ebs != nil {
-			if mapping.Ebs.SnapshotId != nil {
-				// Do not use EBS volume snapshot, it's already gone
-				blockDeviceMappings[i].Ebs.SnapshotId = nil
-			}
-			if mapping.Ebs.VolumeSize == nil {
-				// By default, AWS instances run on a 8gb volumes (?)
-				blockDeviceMappings[i].Ebs.VolumeSize = aws.Int32(8)
+			if mapping.Ebs.SnapshotId != nil && *mapping.Ebs.SnapshotId != "" {
+				isSnapshotIdFound = true
 			}
 		}
 	}
+
+	if !isSnapshotIdFound {
+		return lb.Complete(fmt.Errorf("cannot create instance from image %s/%s, image snapshot not found", iNickname, flavorId))
+	}
+
 	return lb.Complete(internalCreate(p, lb, iNickname, flavorId, imageId, blockDeviceMappings))
 }
 
 func (p *AwsDeployProvider) DeleteSnapshotImage(iNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName()+":"+iNickname, p.GetCtx().IsVerbose)
 
-	// TODO: get EBS snapshot id for this image
-
 	imageId := p.GetCtx().PrjPair.Live.Instances[iNickname].SnapshotImageId
-	err := cldaws.DeregisterImage(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
+
+	// Get EBS snapshot id for this image
+	_, blockDeviceMappings, err := cldaws.GetImageInfo(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	// TODO: delete snapshot
+	snapshotId := ""
+	for _, mapping := range blockDeviceMappings {
+		if mapping.Ebs != nil {
+			if mapping.Ebs.SnapshotId != nil && *mapping.Ebs.SnapshotId != "" {
+				snapshotId = *mapping.Ebs.SnapshotId
+			}
+		}
+	}
+
+	err = cldaws.DeregisterImage(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, imageId)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	// Now we can delete the snapshot
+	if snapshotId != "" {
+		err := cldaws.DeleteSnapshot(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, snapshotId)
+		if err != nil {
+			return lb.Complete(err)
+		}
+	}
 
 	p.GetCtx().PrjPair.SetInstanceSnapshotImageId(iNickname, "")
 	return lb.Complete(nil)

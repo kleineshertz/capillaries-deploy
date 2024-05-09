@@ -5,7 +5,6 @@ set -x # Print commands
 
 SECONDS=0
 ./capideploy stop_services "*" -prj=sample.json --verbose
-sleep 10
 ./capideploy detach_volumes "bastion" -prj=sample.json --verbose
 
 # We want to be 100% sure that cassandra has stopped
