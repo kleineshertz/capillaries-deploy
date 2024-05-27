@@ -1,8 +1,8 @@
 # nginx reverse proxy
 # https://www.digitalocean.com/community/tutorials/how-to-configure-nginx-as-a-reverse-proxy-on-ubuntu-22-04
 
-if [ "$WEBAPI_PORT" = "" ]; then
-  echo Error, missing: WEBAPI_PORT=6543
+if [ "$INTERNAL_WEBAPI_PORT" = "" ]; then
+  echo Error, missing: INTERNAL_WEBAPI_PORT=6543
   exit 1
 fi
 if [ "$EXTERNAL_WEBAPI_PORT" = "" ]; then
@@ -20,7 +20,7 @@ sudo tee $CONFIG_FILE <<EOF
 server {
     listen $EXTERNAL_WEBAPI_PORT;
     location / {
-        proxy_pass http://localhost:$WEBAPI_PORT;
+        proxy_pass http://localhost:$INTERNAL_WEBAPI_PORT;
         include proxy_params;
         include includes/allowed_ips.conf;
     }

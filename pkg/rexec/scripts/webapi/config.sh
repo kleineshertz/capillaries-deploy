@@ -6,8 +6,8 @@ if [ "$AMQP_URL" = "" ]; then
   echo Error, missing: AMQP_URL=amqp://guest:guest@10.5.0.5/
   exit 1
 fi
-if [ "$WEBAPI_PORT" = "" ]; then
-  echo Error, missing: WEBAPI_PORT=6543
+if [ "$INTERNAL_WEBAPI_PORT" = "" ]; then
+  echo Error, missing: INTERNAL_WEBAPI_PORT=6543
   exit 1
 fi
 if [ "$SSH_USER" = "" ]; then
@@ -34,12 +34,12 @@ ENV_CONFIG_FILE=/home/$SSH_USER/bin/capiwebapi.json
 echo "Patching webapi connectivity config"
 sed -i -e 's~"url":[ ]*"[a-zA-Z0-9@\.:\/\-_$ ]*"~"url": "'"$AMQP_URL"'"~g' $ENV_CONFIG_FILE
 sed -i -e 's~"hosts\":[ ]*\[[0-9a-zA-Z\.\,\-_ "]*\]~"hosts": '"$CASSANDRA_HOSTS~g" $ENV_CONFIG_FILE
-sed -i -e 's~"webapi_port\":[ ]*[0-9]*~"webapi_port": '$WEBAPI_PORT'~g' $ENV_CONFIG_FILE
+sed -i -e 's~"webapi_port\":[ ]*[0-9]*~"webapi_port": '$INTERNAL_WEBAPI_PORT'~g' $ENV_CONFIG_FILE
 sed -i -e 's~"access_control_allow_origin\":[ ]*"[0-9a-zA-Z\,\.:\/\-_"]*"~"access_control_allow_origin": "'"$WEBAPI_ACCESS_CONTROL_ACCESS_ORIGIN"'"~g' $ENV_CONFIG_FILE
 sed -i -e "s~\"keyspace_replication_config\":[ ]*\"[^\"]*\"~\"keyspace_replication_config\": \"{'class':'SimpleStrategy', 'replication_factor':1}\"~g" $ENV_CONFIG_FILE
 
-echo "Patching config to use ca at /home/"$SSH_USER"/ca"
-sed -i -e 's~"ca_path":[ ]*"[^\"]*"~"ca_path":"/home/'$SSH_USER'/ca"~g' $ENV_CONFIG_FILE
+#echo "Patching config to use ca at /home/"$SSH_USER"/ca"
+#sed -i -e 's~"ca_path":[ ]*"[^\"]*"~"ca_path":"/home/'$SSH_USER'/ca"~g' $ENV_CONFIG_FILE
 # If you want to use Ubuntu CA store:
 #sed -i -e 's~"ca_path":[ ]*"[a-zA-Z0-9\.\/\-_]*"~"ca_path":"/usr/local/share/ca-certificates"~g' $ENV_CONFIG_FILE
 

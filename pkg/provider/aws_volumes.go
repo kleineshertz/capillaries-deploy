@@ -158,8 +158,13 @@ func (p *AwsDeployProvider) DetachVolume(iNickname string, volNickname string) (
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
 	volDef := p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname]
-	if volDef.VolumeId == "" || volDef.Device == "" || volDef.MountPoint == "" {
-		return lb.Complete(fmt.Errorf("empty parameter not allowed: volDef.VolumeId (%s), volDef.Device (%s), volDef.MountPoint (%s)", volDef.VolumeId, volDef.Device, volDef.MountPoint))
+	if volDef.Device == "" {
+		lb.Add(fmt.Sprintf("volume %s not mounted, nothing to detach", volDef.Name))
+		return lb.Complete(nil)
+	}
+
+	if volDef.VolumeId == "" {
+		return lb.Complete(fmt.Errorf("empty parameter not allowed: volDef.VolumeId (%s)", volDef.VolumeId))
 	}
 
 	er := rexec.ExecSsh(
@@ -181,7 +186,7 @@ func (p *AwsDeployProvider) DetachVolume(iNickname string, volNickname string) (
 	// }
 
 	instanceId := p.GetCtx().PrjPair.Live.Instances[iNickname].Id
-	err := cldaws.DetachVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.VolumeId, instanceId, volDef.Device)
+	err := cldaws.DetachVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.VolumeId, instanceId, volDef.Device, p.GetCtx().PrjPair.Live.Timeouts.DetachVolume)
 	if err != nil {
 		return lb.Complete(err)
 	}

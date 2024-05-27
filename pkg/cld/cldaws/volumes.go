@@ -176,7 +176,7 @@ func AttachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 	return newDevice, nil
 }
 
-func DetachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string, instanceId string, attachedDevice string) error {
+func DetachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string, instanceId string, attachedDevice string, timeoutSeconds int) error {
 	if volId == "" || instanceId == "" || attachedDevice == "" {
 		return fmt.Errorf("empty parameter not allowed: volId (%s), instanceId (%s), attachedDevice (%s)", volId, instanceId, attachedDevice)
 	}
@@ -185,7 +185,28 @@ func DetachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 		InstanceId: aws.String(instanceId),
 		Device:     &attachedDevice})
 	lb.AddObject("DetachVolume", out)
-	return err
+	if err != nil {
+		return fmt.Errorf("cannot attach volume %s to instance %s: %s", volId, instanceId, err.Error())
+	}
+
+	startWaitTs := time.Now()
+	for {
+		_, state, err := GetVolumeAttachedDeviceById(client, goCtx, lb, volId)
+		if err != nil {
+			return err
+		}
+		if state == types.VolumeAttachmentStateDetached {
+			break
+		}
+		if state != types.VolumeAttachmentStateDetaching {
+			return fmt.Errorf("cannot detach volume %s to instance %s: unknown state %s", volId, instanceId, state)
+		}
+		if time.Since(startWaitTs).Seconds() > float64(timeoutSeconds) {
+			return fmt.Errorf("giving up after waiting for volume %s to detach from instance %s", volId, instanceId)
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return nil
 }
 
 func DeleteVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string) error {

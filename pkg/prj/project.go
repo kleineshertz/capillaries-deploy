@@ -27,6 +27,7 @@ type ExecTimeouts struct {
 	DeleteNatGateway int `json:"delete_nat_gateway"`
 	CreateNetwork    int `json:"create_network"`
 	AttachVolume     int `json:"attach_volume"`
+	DetachVolume     int `json:"detach_volume"`
 	CreateImage      int `json:"create_image"`
 }
 
@@ -48,6 +49,9 @@ func (t *ExecTimeouts) InitDefaults() {
 	}
 	if t.AttachVolume == 0 {
 		t.AttachVolume = 30
+	}
+	if t.DetachVolume == 0 {
+		t.DetachVolume = 30
 	}
 	if t.CreateImage == 0 {
 		t.CreateImage = 600

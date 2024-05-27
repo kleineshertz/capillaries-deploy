@@ -4,12 +4,12 @@
   local dep_name = 'sampleaws001',  // Can be any combination of alphanumeric characters. Make it unique.
   local provider_name = 'aws',
   local subnet_availability_zone = 'us-east-1a', // AWS-specific
-  local cassandra_node_flavor = 'aws.c7g.16', // last number is the number of cores in Cassandra nodes. Daemon cores are 4 times less.
+  local cassandra_node_flavor = 'aws.c7g.64', // last number is the number of cores in Cassandra nodes. Daemon cores are 4 times less.
   local architecture = 'arm64', // amd64 or arm64 
   local cassandra_total_nodes = 4, // Cassandra cluster size - 4,8,16
   local daemon_total_instances = cassandra_total_nodes, // If tasks are CPU-intensive (Python calc), make it equal to cassandra_total_nodes, otherwise cassandra_total_nodes/2
-  local DEFAULT_DAEMON_THREAD_POOL_SIZE = '6', // max daemon_cores*1.5
-  local DEFAULT_DAEMON_DB_WRITERS = '8', // Depends on cassandra latency, reasonable values are 5-20
+  local DEFAULT_DAEMON_THREAD_POOL_SIZE = '24', // max daemon_cores*1.5
+  local DEFAULT_DAEMON_DB_WRITERS = '16', // Depends on cassandra latency, reasonable values are 5-20
 
   // It's unlikely that you need to change anything below this line
 
@@ -126,6 +126,7 @@
     'CAPIDEPLOY_SSH_PRIVATE_KEY_PATH',
 
     'CAPIDEPLOY_BASTION_ALLOWED_IPS',
+    'CAPIDEPLOY_EXTERNAL_WEBAPI_PORT',
 
     'CAPIDEPLOY_CAPILLARIES_RELEASE_URL',
 
@@ -346,8 +347,8 @@
           NETWORK_CIDR: $.network.cidr,
           BASTION_ALLOWED_IPS: '{CAPIDEPLOY_BASTION_ALLOWED_IPS}',
           EXTERNAL_IP_ADDRESS: '{EXTERNAL_IP_ADDRESS}',  // internal: capideploy populates it from ssh_config.external_ip_address after loading project file; used by webui and webapi config.sh
-          EXTERNAL_WEBAPI_PORT: '6544',
-          WEBAPI_PORT: '6543',
+          EXTERNAL_WEBAPI_PORT: '{CAPIDEPLOY_EXTERNAL_WEBAPI_PORT}',
+          INTERNAL_WEBAPI_PORT: '6543',
         },
         cmd: {
           install: [

@@ -32,8 +32,8 @@ sed -i -e 's~"hosts":[ ]*\[[0-9a-zA-Z\.\,\-_ "]*\]~"hosts": '$CASSANDRA_HOSTS"~g
 sed -i -e 's~"python_interpreter_path":[ ]*"[a-zA-Z0-9]*"~"python_interpreter_path": "python3"~g' $ENV_CONFIG_FILE
 sed -i -e 's~"level":[ ]*"[a-zA-Z]*"~"level": "info"~g' $ENV_CONFIG_FILE
 
-echo "Patching config to use ca at /home/"$SSH_USER"/ca"
-sed -i -e 's~"ca_path":[ ]*"[^\"]*"~"ca_path":"/home/'$SSH_USER'/ca"~g' $ENV_CONFIG_FILE
+#echo "Patching config to use ca at /home/"$SSH_USER"/ca"
+#sed -i -e 's~"ca_path":[ ]*"[^\"]*"~"ca_path":"/home/'$SSH_USER'/ca"~g' $ENV_CONFIG_FILE
 # If you want to use Ubuntu CA store:
 #sed -i -e 's~"ca_path":[ ]*"[a-zA-Z0-9\.\/\-_]*"~"ca_path":"/usr/local/share/ca-certificates"~g' $ENV_CONFIG_FILE
 
