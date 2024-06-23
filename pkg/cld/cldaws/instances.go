@@ -38,7 +38,7 @@ func GetInstanceType(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder
 	return string(out.InstanceTypes[0].InstanceType), nil // "t2.2xlarge"
 }
 
-func GetImageInfo(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) (types.ImageState, []types.BlockDeviceMapping, error) {
+func GetImageInfoById(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) (types.ImageState, []types.BlockDeviceMapping, error) {
 	if imageId == "" {
 		return "", nil, fmt.Errorf("empty parameter not allowed: imageId (%s)", imageId)
 	}
@@ -52,6 +52,19 @@ func GetImageInfo(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, i
 		return "", nil, fmt.Errorf("found zero results for image %s", imageId)
 	}
 	return out.Images[0].State, out.Images[0].BlockDeviceMappings, nil
+}
+
+func GetImageInfoByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageName string) (string, types.ImageState, []types.BlockDeviceMapping, error) {
+	out, err := client.DescribeImages(goCtx, &ec2.DescribeImagesInput{Filters: []types.Filter{{
+		Name: aws.String("tag:Name"), Values: []string{imageName}}}})
+	lb.AddObject("DescribeImages", out)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("cannot find image %s:%s", imageName, err.Error())
+	}
+	if len(out.Images) == 0 {
+		return "", "", nil, fmt.Errorf("found zero results for image %s", imageName)
+	}
+	return *out.Images[0].ImageId, out.Images[0].State, out.Images[0].BlockDeviceMappings, nil
 }
 
 func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, keypairName string) error {
@@ -284,7 +297,7 @@ func CreateImageFromInstance(client *ec2.Client, goCtx context.Context, tags map
 
 	startWaitTs := time.Now()
 	for {
-		state, _, err := GetImageInfo(client, goCtx, lb, imageId)
+		state, _, err := GetImageInfoById(client, goCtx, lb, imageId)
 		if err != nil {
 			return "", err
 		}

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
@@ -14,40 +15,21 @@ import (
 func (p *AwsDeployProvider) CreateVolume(iNickname string, volNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
-	volDef := p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname]
+	volDef := p.GetCtx().Project.Instances[iNickname].Volumes[volNickname]
 	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	if volDef.VolumeId == "" {
-		// If it was already created, save it for future use, but do not create
-		if foundVolIdByName != "" {
-			lb.Add(fmt.Sprintf("volume %s(%s) already there, updating project", volDef.Name, foundVolIdByName))
-			p.GetCtx().PrjPair.SetVolumeId(iNickname, volNickname, foundVolIdByName)
-			return lb.Complete(nil)
-		}
-	} else {
-		if foundVolIdByName == "" {
-			// It was supposed to be there, but it's not present, complain
-			return lb.Complete(fmt.Errorf("requested volume id %s not present, consider removing this id from the project file", volDef.VolumeId))
-		} else if p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname].VolumeId != foundVolIdByName {
-			// It is already there, but has different id, complain
-			return lb.Complete(fmt.Errorf("requested volume id %s not matching existing volume id %s", volDef.VolumeId, foundVolIdByName))
-		}
-	}
-
-	if volDef.VolumeId != "" {
-		lb.Add(fmt.Sprintf("volume %s(%s) already there, no need to create", volDef.Name, foundVolIdByName))
+	if foundVolIdByName != "" {
+		lb.Add(fmt.Sprintf("volume %s(%s) already there", volDef.Name, foundVolIdByName))
 		return lb.Complete(nil)
 	}
 
-	newId, err := cldaws.CreateVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, volDef.Name, volDef.AvailabilityZone, int32(volDef.Size), volDef.Type)
+	_, err = cldaws.CreateVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, volDef.Name, volDef.AvailabilityZone, int32(volDef.Size), volDef.Type)
 	if err != nil {
 		return lb.Complete(err)
 	}
-
-	p.GetCtx().PrjPair.SetVolumeId(iNickname, volNickname, newId)
 
 	return lb.Complete(nil)
 }
@@ -90,50 +72,49 @@ func awsFinalDeviceNameNitro(suggestedDeviceName string) string {
 func (p *AwsDeployProvider) AttachVolume(iNickname string, volNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
-	volDef := p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname]
+	volDef := p.GetCtx().Project.Instances[iNickname].Volumes[volNickname]
 
 	if volDef.MountPoint == "" || volDef.Permissions == 0 || volDef.Owner == "" {
 		return lb.Complete(fmt.Errorf("empty parameter not allowed: volDef.MountPoint (%s), volDef.Permissions (%d), volDef.Owner (%s)", volDef.MountPoint, volDef.Permissions, volDef.Owner))
 	}
 
-	foundDevice, _, err := cldaws.GetVolumeAttachedDeviceById(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.VolumeId)
+	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	// Do not compare/complain, just overwrite: the number of attachment does not help catch unaccounted cloud resources anyways
+	foundDevice, foundAttachmentState, err := cldaws.GetVolumeAttachedDeviceById(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName)
+	if err != nil {
+		return lb.Complete(err)
+	}
 
-	if volDef.Device != "" {
-		if foundDevice != "" {
-			lb.Add(fmt.Sprintf("volume %s already attached to %s, device %s, updating project", volNickname, iNickname, foundDevice))
-		} else {
-			lb.Add(fmt.Sprintf("volume %s was not attached to %s, cleaning attachment info, updating project", volNickname, iNickname))
-		}
-		p.GetCtx().PrjPair.SetAttachedVolumeDevice(iNickname, volNickname, foundDevice)
-		return lb.Complete(nil)
-	} else {
-		if foundDevice != "" && foundDevice != volDef.Device {
-			lb.Add(fmt.Sprintf("volume %s already to %s, but with a different device(%s->%s), updating project", volNickname, iNickname, volDef.Device, foundDevice))
-			p.GetCtx().PrjPair.SetAttachedVolumeDevice(iNickname, volNickname, foundDevice)
+	if foundDevice != "" {
+		if foundAttachmentState == types.VolumeAttachmentStateAttached {
 			return lb.Complete(nil)
+		} else {
+			return lb.Complete(fmt.Errorf("cannot attach volume %s: it's already attached to device %s, but has invalid attachment state %s", volDef.Name, foundDevice, foundAttachmentState))
 		}
 	}
 
-	suggestedDevice := volNicknameToAwsSuggestedDeviceName(p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes, volNickname)
+	suggestedDevice := volNicknameToAwsSuggestedDeviceName(p.GetCtx().Project.Instances[iNickname].Volumes, volNickname)
 
 	// Attach
 
-	instanceId := p.GetCtx().PrjPair.Live.Instances[iNickname].Id
-	newDevice, err := cldaws.AttachVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.VolumeId, instanceId, suggestedDevice, p.GetCtx().PrjPair.Live.Timeouts.AttachVolume)
+	foundInstanceIdByName, _, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Instances[iNickname].InstName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	p.GetCtx().PrjPair.SetAttachedVolumeDevice(iNickname, volNickname, newDevice)
+	_, err = cldaws.AttachVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName, foundInstanceIdByName, suggestedDevice, p.GetCtx().Project.Timeouts.AttachVolume)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	// Mount
 
 	deviceBlockId, er := rexec.ExecSshAndReturnLastLine(
-		p.GetCtx().PrjPair.Live.SshConfig,
-		p.GetCtx().PrjPair.Live.Instances[iNickname].BestIpAddress(),
+		p.GetCtx().Project.SshConfig,
+		p.GetCtx().Project.Instances[iNickname].BestIpAddress(),
 		fmt.Sprintf("%s\ninit_volume_attachment %s %s %d '%s'",
 			cldaws.InitVolumeAttachmentFunc,
 			awsFinalDeviceNameNitro(suggestedDevice), // AWS final device here
@@ -149,58 +130,59 @@ func (p *AwsDeployProvider) AttachVolume(iNickname string, volNickname string) (
 		return lb.Complete(fmt.Errorf("cannot mount volume %s to instance %s, returned blockDeviceId is: %s", volNickname, iNickname, deviceBlockId))
 	}
 
-	p.GetCtx().PrjPair.SetVolumeBlockDeviceId(iNickname, volNickname, deviceBlockId)
-
 	return lb.Complete(nil)
 }
 
 func (p *AwsDeployProvider) DetachVolume(iNickname string, volNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
-	volDef := p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname]
-	if volDef.Device == "" {
+	volDef := p.GetCtx().Project.Instances[iNickname].Volumes[volNickname]
+
+	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	if foundVolIdByName == "" {
+		lb.Add(fmt.Sprintf("volume %s not found, nothing to detach", volDef.Name))
+		return lb.Complete(nil)
+	}
+
+	foundDevice, _, err := cldaws.GetVolumeAttachedDeviceById(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	if foundDevice == "" {
 		lb.Add(fmt.Sprintf("volume %s not mounted, nothing to detach", volDef.Name))
 		return lb.Complete(nil)
 	}
 
-	if volDef.VolumeId == "" {
-		return lb.Complete(fmt.Errorf("empty parameter not allowed: volDef.VolumeId (%s)", volDef.VolumeId))
-	}
+	// Unmount
 
 	er := rexec.ExecSsh(
-		p.GetCtx().PrjPair.Live.SshConfig,
-		p.GetCtx().PrjPair.Live.Instances[iNickname].BestIpAddress(),
+		p.GetCtx().Project.SshConfig,
+		p.GetCtx().Project.Instances[iNickname].BestIpAddress(),
 		fmt.Sprintf("sudo umount -d %s", volDef.MountPoint), map[string]string{})
 	lb.Add(er.ToString())
 	if er.Error != nil {
 		return lb.Complete(fmt.Errorf("cannot umount volume %s on instance %s: %s", volNickname, iNickname, er.Error.Error()))
 	}
 
-	// er = rexec.ExecSsh(
-	// 	p.GetCtx().PrjPair.Live.SshConfig,
-	// 	p.GetCtx().PrjPair.Live.Instances[iNickname].BestIpAddress(),
-	// 	fmt.Sprintf("sudo rm -fR %s", volDef.MountPoint), map[string]string{})
-	// lb.Add(er.ToString())
-	// if er.Error != nil {
-	// 	return lb.Complete(fmt.Errorf("cannot delete mount point for volume %s on instance %s: %s", volNickname, iNickname, er.Error.Error()))
-	// }
-
-	instanceId := p.GetCtx().PrjPair.Live.Instances[iNickname].Id
-	err := cldaws.DetachVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.VolumeId, instanceId, volDef.Device, p.GetCtx().PrjPair.Live.Timeouts.DetachVolume)
+	foundInstanceIdByName, _, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Instances[iNickname].InstName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	p.GetCtx().PrjPair.SetVolumeBlockDeviceId(iNickname, volNickname, "")
-	p.GetCtx().PrjPair.SetAttachedVolumeDevice(iNickname, volNickname, "")
+	// Detach
 
-	return lb.Complete(nil)
+	return lb.Complete(cldaws.DetachVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName, foundInstanceIdByName, foundDevice, p.GetCtx().Project.Timeouts.DetachVolume))
 }
 
 func (p *AwsDeployProvider) DeleteVolume(iNickname string, volNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
-	volDef := p.GetCtx().PrjPair.Live.Instances[iNickname].Volumes[volNickname]
+	volDef := p.GetCtx().Project.Instances[iNickname].Volumes[volNickname]
 	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)
 	if err != nil {
 		return lb.Complete(err)
@@ -208,21 +190,8 @@ func (p *AwsDeployProvider) DeleteVolume(iNickname string, volNickname string) (
 
 	if foundVolIdByName == "" {
 		lb.Add(fmt.Sprintf("volume %s not found, nothing to delete", volDef.Name))
-		p.GetCtx().PrjPair.SetVolumeId(iNickname, volNickname, "")
 		return lb.Complete(nil)
 	}
 
-	if foundVolIdByName != volDef.VolumeId {
-		lb.Add(fmt.Sprintf("volume %s found, it has id %s, does not match known id %s", volDef.Name, foundVolIdByName, volDef.VolumeId))
-		return lb.Complete(fmt.Errorf("cannot delete volume %s, it has id %s, does not match known id %s", volDef.Name, foundVolIdByName, volDef.VolumeId))
-	}
-
-	err = cldaws.DeleteVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.VolumeId)
-	if err != nil {
-		return lb.Complete(err)
-	}
-
-	p.GetCtx().PrjPair.SetVolumeId(iNickname, volNickname, "")
-
-	return lb.Complete(nil)
+	return lb.Complete(cldaws.DeleteVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName))
 }

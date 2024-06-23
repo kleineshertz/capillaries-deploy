@@ -1,28 +1,43 @@
 {
   // Variables to play with
 
-  local dep_name = 'sampleaws001',  // Can be any combination of alphanumeric characters. Make it unique.
   local provider_name = 'aws',
+  local dep_name = 'sampleaws001',  // Can be any combination of alphanumeric characters. Make it unique.
   local subnet_availability_zone = 'us-east-1a', // AWS-specific
-  local cassandra_node_flavor = 'aws.c7g.64', // last number is the number of cores in Cassandra nodes. Daemon cores are 4 times less.
-  local architecture = 'arm64', // amd64 or arm64 
-  local cassandra_total_nodes = 4, // Cassandra cluster size - 4,8,16
-  local daemon_total_instances = cassandra_total_nodes, // If tasks are CPU-intensive (Python calc), make it equal to cassandra_total_nodes, otherwise cassandra_total_nodes/2
-  local DEFAULT_DAEMON_THREAD_POOL_SIZE = '24', // max daemon_cores*1.5
-  local DEFAULT_DAEMON_DB_WRITERS = '16', // Depends on cassandra latency, reasonable values are 5-20
+    
+  // 1. aws or azure
+  // 2. amd64 or arm64
+  // 3. Flavor family
+  // 4. Number of cores in Cassandra nodes. Daemon cores are 4 times less.
+  // Check out instance_flavor below for full list of available setups or add your own
+  local deployment_flavor_power = provider_name + '.arm64.c7g.64',
 
-  // It's unlikely that you need to change anything below this line
+   // Cassandra cluster size - 4,8,16
+  local cassandra_total_nodes = 4,
 
+  // You probably will not change anything below this line
+
+  // max: daemon_cores*1.5 (which is the same as cassandra cores / 4 * 1.5)
+  local DEFAULT_DAEMON_THREAD_POOL_SIZE = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4 * 1.5), 
+
+  // Depends on cassandra latency, reasonable values are 5-20. Let it be daemon cores
+  local DEFAULT_DAEMON_DB_WRITERS = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4), 
+
+  // If tasks are CPU-intensive (Python calc), make it equal to cassandra_total_nodes, otherwise cassandra_total_nodes/2 may be enough
+  local daemon_total_instances = cassandra_total_nodes, 
+
+  // It's very unlikely that you need to change anything below this line
+
+  local architecture =  std.split(deployment_flavor_power,".")[1], // amd64 or arm64 
   local os_arch = 'linux/' + architecture,
 
   // Network
   local vpc_cidr = '10.5.0.0/16', // AWS only
   local private_subnet_cidr = '10.5.0.0/24',
   local public_subnet_cidr = '10.5.1.0/24', // AWS only
-  local bastion_subnet_type = if provider_name == 'aws' then 'public' else 'private',
 
   // Internal IPs
-  local internal_bastion_ip = if provider_name == 'aws' then '10.5.1.10' else if provider_name == 'openstack' then '10.5.0.10' else 'unknown_bastion_ip', // In AWS, bastion is in the public subnet 10.5.1.0/24. In Openstack we have only the private subnet, so it's 10.5.0.10
+  local internal_bastion_ip = '10.5.1.10',
   local prometheus_ip = '10.5.0.4',
   local rabbitmq_ip = '10.5.0.5',
   local daemon_ips = 
@@ -51,52 +66,15 @@
     if architecture == 'arm64' then 'ami-09b2701695676705d'// ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20240117 // 'ami-064b469793e32e5d2' ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20230904
     else if architecture == 'amd64' then 'ami-0d8583a0d8d6dd14f' //ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-amd64-server-20230714
     else 'unknown-architecture-unknown-image',
-  
-  local instance_flavor_rabbitmq = 
-    if architecture == 'arm64' then 'c7g.medium'
-    else if architecture == 'amd64' then 't2.micro'
-    else 'unknown-architecture-unknown-rabbitmq-flavor',
 
-  local instance_flavor_prometheus = 
-    if architecture == 'arm64' then 'c7g.medium'
-    else if architecture == 'amd64' then 't2.micro'
-    else 'unknown-architecture-unknown-prometheus-flavor',
-
-  // Something modest, but capable of serving as NFS server, Webapi, UI and log collector
-  local instance_flavor_bastion =
-    if architecture == 'arm64' then 'c7g.large'
-    else if architecture == 'amd64' then 't2.medium'
-    else 'unknown-architecture-unknown-prometheus-flavor',
-
-  // Fast/big everything: CPU, network, disk, RAM. Preferably local disk, preferably bare metal 
-  local instance_flavor_cassandra = getFromMap({
-      'aws.c6a.16': 'c6a.4xlarge',
-      'aws.c6a.32': 'c5ad.8xlarge', // 'c5ad.8xlarge' 2x600, c5ad.16xlarge' 2x1200
-      'aws.c6a.64': 'c6ad.16xlarge',
-
-      'aws.c7g.16': 'c7gd.4xlarge', // 1x950
-      'aws.c7g.32': 'c7gd.8xlarge', // 1x1900
-      'aws.c7g.64': 'c7gd.16xlarge', // 2x1900
-  }, cassandra_node_flavor),
-
-  // Fast/big CPU, network, RAM. Disk optional.
-  local instance_flavor_daemon = getFromMap({
-      'aws.c6a.16': 'c6a.xlarge',
-      'aws.c6a.32': 'c6a.2xlarge',
-      'aws.c6a.64': 'c6a.4xlarge',
-
-      'aws.c7g.16': 'c7g.xlarge',
-      'aws.c7g.32': 'c7g.2xlarge',
-      'aws.c7g.64': 'c7g.4xlarge',
-  }, cassandra_node_flavor),
-
-  // Whatever lsblk says
-  local cassandra_nvme_regex = 
-    if instance_flavor_cassandra == "c5ad.8xlarge" then "nvme[0-9]n[0-9] 558.8G"
-    else if instance_flavor_cassandra == "c7gd.4xlarge" then "nvme[0-9]n[0-9] 884.8G"
-    else if instance_flavor_cassandra == "c7gd.8xlarge" then "nvme[0-9]n[0-9] 1.7T"
-    else if instance_flavor_cassandra == "c7gd.16xlarge" then "nvme[0-9]n[0-9] 1.7T"
-    else "unknown-nvme-mask",
+  local instance_flavor = getFromMap({
+    'aws.amd64.c6a.16': {cassandra:'c6a.4xlarge',   cass_nvme_regex:'unknown-nvme-regex',     daemon: 'c6a.xlarge',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.amd64.c6a.32': {cassandra:'c5ad.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 558.8G', daemon: 'c6a.2xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.amd64.c6a.64': {cassandra:'c6ad.16xlarge', cass_nvme_regex:'unknown-nvme-regex',     daemon: 'c6a.4xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.arm64.c7g.16': {cassandra:'c7gd.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 884.8G', daemon: 'c7g.xlarge',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
+    'aws.arm64.c7g.32': {cassandra:'c7gd.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',   daemon: 'c7g.2xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
+    'aws.arm64.c7g.64': {cassandra:'c7gd.16xlarge', cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',   daemon: 'c6a.4xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'}
+  }, deployment_flavor_power),
 
   // Volumes
   local volume_availability_zone = subnet_availability_zone, // Keep it simple
@@ -119,28 +97,29 @@
   deploy_provider_name: provider_name,
 
   // Full list of env variables expected by capideploy working with this project
-  env_variables_used: [
-    // Used in this config
-    'CAPIDEPLOY_SSH_USER',
-    'CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME',
-    'CAPIDEPLOY_SSH_PRIVATE_KEY_PATH',
+  // env_variables_used: [
+  //   // Used in this config
+  //   'CAPIDEPLOY_SSH_USER',
+  //   'CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME',
+  //   'CAPIDEPLOY_SSH_PRIVATE_KEY_PATH',
 
-    'CAPIDEPLOY_BASTION_ALLOWED_IPS',
-    'CAPIDEPLOY_EXTERNAL_WEBAPI_PORT',
+  //   'CAPIDEPLOY_BASTION_ALLOWED_IPS',
+  //   'CAPIDEPLOY_EXTERNAL_WEBAPI_PORT',
 
-    'CAPIDEPLOY_CAPILLARIES_RELEASE_URL',
+  //   'CAPIDEPLOY_CAPILLARIES_RELEASE_URL',
 
-    'CAPIDEPLOY_RABBITMQ_ADMIN_NAME',
-    'CAPIDEPLOY_RABBITMQ_ADMIN_PASS',
-    'CAPIDEPLOY_RABBITMQ_USER_NAME',
-    'CAPIDEPLOY_RABBITMQ_USER_PASS',
+  //   'CAPIDEPLOY_RABBITMQ_ADMIN_NAME',
+  //   'CAPIDEPLOY_RABBITMQ_ADMIN_PASS',
+  //   'CAPIDEPLOY_RABBITMQ_USER_NAME',
+  //   'CAPIDEPLOY_RABBITMQ_USER_PASS',
 
-    'CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID',
-    'CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY',
-    'CAPIDEPLOY_IAM_AWS_DEFAULT_REGION',
-  ],
+  //   'CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID',
+  //   'CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY',
+  //   'CAPIDEPLOY_IAM_AWS_DEFAULT_REGION',
+  // ],
   ssh_config: {
-    external_ip_address: '',
+    bastion_external_ip_address_name: dep_name +  '_bastion_external_ip_name',
+    // external_ip_address: '',
     port: 22,
     user: '{CAPIDEPLOY_SSH_USER}',
     private_key_path: '{CAPIDEPLOY_SSH_PRIVATE_KEY_PATH}',
@@ -153,6 +132,7 @@
     cidr: vpc_cidr,
     private_subnet: {
       name: dep_name + '_private_subnet',
+      route_table_to_nat_gateway_name: dep_name + '_private_subnet_rt_to_natgw',
       cidr: private_subnet_cidr,
       availability_zone: subnet_availability_zone,
     },
@@ -161,6 +141,7 @@
       cidr: public_subnet_cidr,
       availability_zone: subnet_availability_zone,
       nat_gateway_name: dep_name + '_natgw',
+      nat_gateway_external_ip_address_name: dep_name + '_natgw_external_ip_name',
     },
     router: { // aka AWS internet gateway
       name: dep_name + '_router',
@@ -311,15 +292,15 @@
 
   local bastion_instance = {
     bastion: {
-      purpose: 'bastion',
+      purpose: 'CAPIDEPLOY.INTERNAL.PURPOSE_BASTION',
       inst_name: dep_name + '-bastion',
-      security_group: 'bastion',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: internal_bastion_ip,
-      uses_ssh_config_external_ip_address: true,
-      flavor: instance_flavor_bastion,
+      external_ip_address_name: $.ssh_config.bastion_external_ip_address_name,
+      flavor: instance_flavor.bastion,
       image_id: instance_image_id,
-      subnet_type: bastion_subnet_type,
+      security_group_name: $.security_groups.bastion.name,
+      subnet_name: $.network.public_subnet.name,
       volumes: {
         'log': {
           name: dep_name + '_log',
@@ -346,7 +327,7 @@
           SSH_USER: $.ssh_config.user,
           NETWORK_CIDR: $.network.cidr,
           BASTION_ALLOWED_IPS: '{CAPIDEPLOY_BASTION_ALLOWED_IPS}',
-          EXTERNAL_IP_ADDRESS: '{EXTERNAL_IP_ADDRESS}',  // internal: capideploy populates it from ssh_config.external_ip_address after loading project file; used by webui and webapi config.sh
+          EXTERNAL_IP_ADDRESS: '{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}',  // internal: capideploy populates it from ssh_config.external_ip_address after loading project file; used by webui and webapi config.sh
           EXTERNAL_WEBAPI_PORT: '{CAPIDEPLOY_EXTERNAL_WEBAPI_PORT}',
           INTERNAL_WEBAPI_PORT: '6543',
         },
@@ -394,14 +375,14 @@
 
   local rabbitmq_instance = {
     rabbitmq: {
-      purpose: 'rabbitmq',
+      purpose: 'CAPIDEPLOY.INTERNAL.PURPOSE_RABBITMQ',
       inst_name: dep_name + '-rabbitmq',
-      security_group: 'internal',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: rabbitmq_ip,
-      flavor: instance_flavor_rabbitmq,
+      flavor: instance_flavor.rabbitmq,
       image_id: instance_image_id,
-      subnet_type: 'private',
+      security_group_name: $.security_groups.internal.name,
+      subnet_name: $.network.private_subnet.name,
       service: {
         env: {
           INTERNAL_BASTION_IP: internal_bastion_ip,
@@ -435,14 +416,14 @@
 
   local prometheus_instance = {
     prometheus: {
-      purpose: 'prometheus',
+      purpose: 'CAPIDEPLOY.INTERNAL.PURPOSE_PROMETHEUS',
       inst_name: dep_name + '-prometheus',
-      security_group: 'internal',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: prometheus_ip,
-      flavor: instance_flavor_prometheus,
+      flavor: instance_flavor.prometheus,
       image_id: instance_image_id,
-      subnet_type: 'private',
+      security_group_name: $.security_groups.internal.name,
+      subnet_name: $.network.private_subnet.name,
       service: {
         env: {
           PROMETHEUS_NODE_EXPORTER_VERSION: prometheus_node_exporter_version,
@@ -472,14 +453,14 @@
 
   local cass_instances = {
     [e.nickname]: {
-      purpose: 'cassandra',
+      purpose: 'CAPIDEPLOY.INTERNAL.PURPOSE_CASSANDRA',
       inst_name: e.inst_name,
-      security_group: 'internal',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: e.ip_address,
-      flavor: instance_flavor_cassandra,
+      flavor: instance_flavor.cassandra,
       image_id: instance_image_id,
-      subnet_type: 'private',
+      security_group_name: $.security_groups.internal.name,
+      subnet_name: $.network.private_subnet.name,
       service: {
         env: {
           INTERNAL_BASTION_IP: internal_bastion_ip,
@@ -488,7 +469,7 @@
           INITIAL_TOKEN: e.token,
           PROMETHEUS_NODE_EXPORTER_VERSION: prometheus_node_exporter_version,
           JMX_EXPORTER_VERSION: jmx_exporter_version,
-          NVME_REGEX: cassandra_nvme_regex,
+          NVME_REGEX: instance_flavor.cass_nvme_regex,
         },
         cmd: {
           install: [
@@ -521,14 +502,14 @@
 
   local daemon_instances = {
     [e.nickname]: {
-      purpose: 'daemon',
+      purpose: 'CAPIDEPLOY.INTERNAL.PURPOSE_DAEMON',
       inst_name: e.inst_name,
-      security_group: 'internal',
       root_key_name: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME}',
       ip_address: e.ip_address,
-      flavor: instance_flavor_daemon,
+      flavor: instance_flavor.daemon,
       image_id: instance_image_id,
-      subnet_type: 'private',
+      security_group_name: $.security_groups.internal.name,
+      subnet_name: $.network.private_subnet.name,
       service: {
         env: {
           INTERNAL_BASTION_IP: internal_bastion_ip,

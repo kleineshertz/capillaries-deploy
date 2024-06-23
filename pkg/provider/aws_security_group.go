@@ -1,121 +1,79 @@
 package provider
 
 import (
+	"context"
 	"fmt"
-	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
+	"github.com/capillariesio/capillaries-deploy/pkg/prj"
 )
 
-func createAwsSecurityGroup(p *AwsDeployProvider, sgNickname string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
-
-	sgDef := p.GetCtx().PrjPair.Live.SecurityGroups[sgNickname]
-	foundGroupIdByName, err := cldaws.GetSecurityGroupIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, sgDef.Name)
+func createAwsSecurityGroup(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, sgDef *prj.SecurityGroupDef, vpcId string) error {
+	groupId, err := cldaws.GetSecurityGroupIdByName(client, goCtx, lb, sgDef.Name)
 	if err != nil {
-		return lb.Complete(err)
+		return err
 	}
 
-	if sgDef.Id == "" {
-		// If it was already created, save it for future use, but do not create
-		if foundGroupIdByName != "" {
-			lb.Add(fmt.Sprintf("security group %s(%s) already there, updating project", sgDef.Name, foundGroupIdByName))
-			p.GetCtx().PrjPair.SetSecurityGroupId(sgNickname, foundGroupIdByName)
-		}
-	} else {
-		if foundGroupIdByName == "" {
-			// It was supposed to be there, but it's not present, complain
-			return lb.Complete(fmt.Errorf("requested security group id %s not present, consider removing this id from the project file", sgDef.Id))
-		} else if sgDef.Id != foundGroupIdByName {
-			// It is already there, but has different id, complain
-			return lb.Complete(fmt.Errorf("requested security group id %s not matching existing security group id %s", sgDef.Id, foundGroupIdByName))
-		}
-	}
-
-	if sgDef.Id == "" {
-		newId, err := cldaws.CreateSecurityGroup(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, sgDef.Name, p.GetCtx().PrjPair.Live.Network.Id)
+	if groupId == "" {
+		groupId, err = cldaws.CreateSecurityGroup(client, goCtx, tags, lb, sgDef.Name, vpcId)
 		if err != nil {
-			return lb.Complete(err)
+			return err
 		}
-		p.GetCtx().PrjPair.SetSecurityGroupId(sgNickname, newId)
 	}
 
-	for ruleIdx, rule := range sgDef.Rules {
-		err := cldaws.AuthorizeSecurityGroupIngress(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, sgDef.Id, rule.Protocol, int32(rule.Port), rule.RemoteIp)
+	for _, rule := range sgDef.Rules {
+		err := cldaws.AuthorizeSecurityGroupIngress(client, goCtx, lb, groupId, rule.Protocol, int32(rule.Port), rule.RemoteIp)
 		if err != nil {
-			return lb.Complete(err)
+			return err
 		}
-
-		// AWS does not assign ids to rules, so use the port
-		p.GetCtx().PrjPair.SetSecurityGroupRuleId(sgNickname, ruleIdx, fmt.Sprintf("%d", rule.Port))
 	}
-
-	return lb.Complete(nil)
+	return nil
 }
 
 func (p *AwsDeployProvider) CreateSecurityGroups() (l.LogMsg, error) {
-	sb := strings.Builder{}
-	for sgNickname := range p.GetCtx().PrjPair.Live.SecurityGroups {
-		logMsg, err := createAwsSecurityGroup(p, sgNickname)
-		l.AddLogMsg(&sb, logMsg)
-		if err != nil {
-			return l.LogMsg(sb.String()), err
-		}
-	}
-	return l.LogMsg(sb.String()), nil
-}
-
-func deleteAwsSecurityGroup(p *AwsDeployProvider, sgNickname string) (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
-	sgName := p.GetCtx().PrjPair.Live.SecurityGroups[sgNickname].Name
-	if sgName == "" {
-		return lb.Complete(fmt.Errorf("empty parameter not allowed: sgName (%s)", sgName))
-	}
-	foundId, err := cldaws.GetSecurityGroupIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, sgName)
+	vpcId, err := cldaws.GetVpcIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	if p.GetCtx().PrjPair.Live.SecurityGroups[sgNickname].Id == "" {
-		if foundId != "" {
-			// Update project, delete found
-			p.GetCtx().PrjPair.SetSecurityGroupId(sgNickname, foundId)
-		}
-	} else {
-		if foundId == "" {
-			// Already deleted, update project
-			p.GetCtx().PrjPair.CleanSecurityGroup(sgNickname)
-		} else if p.GetCtx().PrjPair.Live.SecurityGroups[sgNickname].Id != foundId {
-			// It is already there, but has different id, complain
-			return lb.Complete(fmt.Errorf("requested security group id %s not matching existing security group id %s", p.GetCtx().PrjPair.Live.SecurityGroups[sgNickname].Id, foundId))
+	if vpcId == "" {
+		return lb.Complete(fmt.Errorf("cannot create security groups, vpc %s does not exist", p.GetCtx().Project.Network.Name))
+	}
+
+	for _, sgDef := range p.GetCtx().Project.SecurityGroups {
+		err := createAwsSecurityGroup(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, sgDef, vpcId)
+		if err != nil {
+			return lb.Complete(err)
 		}
 	}
-
-	// At this point, the project contains relevant resource id
-	if p.GetCtx().PrjPair.Live.SecurityGroups[sgNickname].Id == "" {
-		lb.Add(fmt.Sprintf("will not delete security group %s, nothing to delete", sgNickname))
-		return lb.Complete(nil)
-	}
-
-	err = cldaws.DeleteSecurityGroup(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().PrjPair.Live.SecurityGroups[sgNickname].Id)
-	if err != nil {
-		return lb.Complete(err)
-	}
-	p.GetCtx().PrjPair.CleanSecurityGroup(sgNickname)
-
 	return lb.Complete(nil)
 }
 
+func deleteAwsSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, sgDef *prj.SecurityGroupDef) error {
+	foundId, err := cldaws.GetSecurityGroupIdByName(client, goCtx, lb, sgDef.Name)
+	if err != nil {
+		return err
+	}
+
+	if foundId == "" {
+		lb.Add(fmt.Sprintf("will not delete security group %s, nothing to delete", sgDef.Name))
+		return nil
+	}
+
+	return cldaws.DeleteSecurityGroup(client, goCtx, lb, foundId)
+}
+
 func (p *AwsDeployProvider) DeleteSecurityGroups() (l.LogMsg, error) {
-	sb := strings.Builder{}
-	for sgNickname := range p.GetCtx().PrjPair.Live.SecurityGroups {
-		logMsg, err := deleteAwsSecurityGroup(p, sgNickname)
-		l.AddLogMsg(&sb, logMsg)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	for _, sgDef := range p.GetCtx().Project.SecurityGroups {
+		err := deleteAwsSecurityGroup(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, sgDef)
 		if err != nil {
-			return l.LogMsg(sb.String()), err
+			return lb.Complete(err)
 		}
 	}
-	return l.LogMsg(sb.String()), nil
+	return lb.Complete(nil)
 }

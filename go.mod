@@ -28,5 +28,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.23.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.28.6 // indirect
 	github.com/aws/smithy-go v1.20.2 // indirect
+	github.com/google/go-jsonnet v0.20.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
+	gopkg.in/yaml.v2 v2.2.8 // indirect
+	sigs.k8s.io/yaml v1.1.0 // indirect
 )

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -116,27 +117,27 @@ Capillaries deploy
 Usage: capideploy <command> [command parameters] [optional parameters]
 
 Commands:
-  %s
-  %s
-  %s
-  %s
-  %s
-  %s
-  %s
-  %s <comma-separated list of instances to create volumes on, or 'all'>
-  %s <comma-separated list of instances to attach volumes on, or 'all'>
-  %s <comma-separated list of instances to detach volumes on, or 'all'>
-  %s <comma-separated list of instances to delete volumes on, or 'all'>
-  %s <comma-separated list of instances to create, or 'all'>
-  %s <comma-separated list of instances to delete, or 'all'>
-  %s <comma-separated list of instances to ping, or 'all'>
-  %s <comma-separated list of instances to install services on, or 'all'>
-  %s <comma-separated list of instances to config services on, or 'all'>
-  %s <comma-separated list of instances to start services on, or 'all'>
-  %s <comma-separated list of instances to stop services on, or 'all'>
-  %s <comma-separated list of instances to create snapshot images for, or 'all'>
-  %s <comma-separated list of instances to create from snapshot images, or 'all'>
-  %s <comma-separated list of instances to delete snapshot images for, or 'all'>
+  %s -p <jsonnet project file>
+  %s -p <jsonnet project file>
+  %s -p <jsonnet project file>
+  %s -p <jsonnet project file>
+  %s -p <jsonnet project file>
+  %s -p <jsonnet project file>
+  %s -p <jsonnet project file>
+  %s <comma-separated list of instances to create volumes on, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to attach volumes on, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to detach volumes on, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to delete volumes on, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to create, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to delete, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to ping, or 'all'> -p <jsonnet project file> -n <number of repetitions, default 1>
+  %s <comma-separated list of instances to install services on, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to config services on, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to start services on, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to stop services on, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to create snapshot images for, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to create from snapshot images, or 'all'> -p <jsonnet project file>
+  %s <comma-separated list of instances to delete snapshot images for, or 'all'> -p <jsonnet project file>
 `,
 		CmdListDeploymentResources,
 
@@ -165,19 +166,78 @@ Commands:
 		CmdCreateInstancesFromSnapshotImages,
 		CmdDeleteSnapshotImages,
 	)
-	fmt.Printf("\nOptional parameters:\n")
-	flagset.PrintDefaults()
+	if flagset != nil {
+		fmt.Printf("\nParameters:\n")
+		flagset.PrintDefaults()
+	}
+}
+
+// func createProject(templatePath string) error {
+// 	vm := jsonnet.MakeVM()
+// 	json, err := vm.EvaluateFile(templatePath)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	fmt.Println(json)
+// 	return nil
+// }
+
+func ping(sshConfig *rexec.SshConfigDef, ipAddress string, verbosity bool, numberOfRepetitions int) (l.LogMsg, error) {
+	var err error
+	var logMsg l.LogMsg
+
+	repetitions := 1
+	if numberOfRepetitions > 1 {
+		repetitions = numberOfRepetitions
+	}
+
+	lb := l.NewLogBuilder(l.CurFuncName()+" "+ipAddress, verbosity)
+
+	for {
+		logMsg, err = rexec.ExecCommandOnInstance(sshConfig, ipAddress, "id", verbosity)
+		lb.Add(string(logMsg))
+		repetitions--
+		if err == nil || repetitions == 0 {
+			break
+		}
+		lb.Add(err.Error())
+		time.Sleep(5 * time.Second)
+	}
+
+	return lb.Complete(err)
 }
 
 func main() {
-	commonArgs := flag.NewFlagSet("common args", flag.ExitOnError)
-	argVerbosity := commonArgs.Bool("verbose", false, "Debug output")
-	argPrjFile := commonArgs.String("prj", "capideploy.json", "Capideploy project file path")
-
 	if len(os.Args) <= 1 {
-		usage(commonArgs)
+		usage(nil)
 		os.Exit(1)
 	}
+
+	// if os.Args[1] == CmdCreateProject {
+	// 	createPrjArgs := flag.NewFlagSet("create prj args", flag.ExitOnError)
+	// 	argTemplateFile := createPrjArgs.String("t", "capideploy.jsonnet", "Capideploy project template jsonnet file path")
+
+	// 	if len(os.Args) <= 2 {
+	// 		usage(createPrjArgs)
+	// 		os.Exit(1)
+	// 	}
+	// 	parseErr := createPrjArgs.Parse(os.Args[2:])
+	// 	if parseErr != nil {
+	// 		log.Fatalf(parseErr.Error())
+	// 	}
+	// 	createPrjErr := createProject(*argTemplateFile)
+	// 	if createPrjErr != nil {
+	// 		log.Fatalf(createPrjErr.Error())
+	// 	}
+	// 	os.Exit(0)
+	// }
+
+	commonArgs := flag.NewFlagSet("run prj args", flag.ExitOnError)
+	argPrjFile := commonArgs.String("p", "capideploy.json", "Capideploy project jsonnet file path")
+	argVerbosity := commonArgs.Bool("v", false, "Verbose debug output")
+	argNumberOfRepetitions := commonArgs.Int("n", 1, "Number of repetitions")
+	argShowProjectDetails := commonArgs.Bool("s", false, "Show project details (may contain sensitive info)")
+	argIgnoreAttachedVolumes := commonArgs.Bool("i", false, "Ignore attached volumes on instance delete")
 
 	cmdStartTs := time.Now()
 
@@ -188,8 +248,9 @@ func main() {
 	var errChan chan error
 	var parseErr error
 	errorsExpected := 1
-	var prjPair *prj.ProjectPair
-	var fullPrjPath string
+	//var prjPair *prj.ProjectPair
+	var project *prj.Project
+	//var fullPrjPath string
 	var prjErr error
 
 	singleThreadCommands := map[string]SingleThreadCmdHandler{
@@ -211,12 +272,12 @@ func main() {
 		log.Fatalf(parseErr.Error())
 	}
 
-	prjPair, fullPrjPath, prjErr = prj.LoadProject(*argPrjFile)
+	project, prjErr = prj.LoadProject(*argPrjFile)
 	if prjErr != nil {
 		log.Fatalf(prjErr.Error())
 	}
 
-	deployProvider, deployProviderErr := provider.DeployProviderFactory(prjPair, context.TODO(), *argVerbosity)
+	deployProvider, deployProviderErr := provider.DeployProviderFactory(project, context.TODO(), *argVerbosity)
 	if deployProviderErr != nil {
 		log.Fatalf(deployProviderErr.Error())
 	}
@@ -246,7 +307,7 @@ func main() {
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
-		instances, err := filterByNickname(nicknames, prjPair.Live.Instances, "instance")
+		instances, err := filterByNickname(nicknames, project.Instances, "instance")
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -258,6 +319,11 @@ func main() {
 		usedImages := map[string]bool{}
 		if os.Args[1] == CmdCreateInstances ||
 			os.Args[1] == CmdCreateInstancesFromSnapshotImages {
+			logMsgBastionIp, err := deployProvider.PopulateInstanceExternalAddressByName()
+			if err != nil {
+				log.Fatal(logMsgBastionIp)
+			}
+
 			// Make sure image/flavor is supported
 			usedKeypairs := map[string]struct{}{}
 			for _, instDef := range instances {
@@ -295,63 +361,71 @@ func main() {
 
 		switch os.Args[1] {
 		case CmdCreateInstances:
+			logMsgBastionIp, err := deployProvider.PopulateInstanceExternalAddressByName()
+			if err != nil {
+				log.Fatal(logMsgBastionIp)
+			}
 			for iNickname := range instances {
 				<-throttle
 				sem <- 1
-				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
+				go func(project *prj.Project, logChan chan l.LogMsg, errChan chan error, iNickname string) {
 					logMsg, err := deployProvider.CreateInstanceAndWaitForCompletion(
 						iNickname,
-						usedFlavors[prjPair.Live.Instances[iNickname].FlavorName],
-						prjPair.Live.Instances[iNickname].ImageId)
+						usedFlavors[project.Instances[iNickname].FlavorName],
+						project.Instances[iNickname].ImageId)
 					logChan <- logMsg
 					errChan <- err
 					<-sem
-				}(prjPair, logChan, errChan, iNickname)
+				}(project, logChan, errChan, iNickname)
 			}
 		case CmdDeleteInstances:
+			logMsgBastionIp, err := deployProvider.PopulateInstanceExternalAddressByName()
+			if err != nil {
+				log.Fatal(logMsgBastionIp)
+			}
 			for iNickname := range instances {
 				<-throttle
 				sem <- 1
-				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
-					logMsg, err := deployProvider.DeleteInstance(iNickname)
+				go func(project *prj.Project, logChan chan l.LogMsg, errChan chan error, iNickname string) {
+					logMsg, err := deployProvider.DeleteInstance(iNickname, *argIgnoreAttachedVolumes)
 					logChan <- logMsg
 					errChan <- err
 					<-sem
-				}(prjPair, logChan, errChan, iNickname)
+				}(project, logChan, errChan, iNickname)
 			}
 		case CmdCreateSnapshotImages:
 			for iNickname := range instances {
 				<-throttle
 				sem <- 1
-				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
+				go func(project *prj.Project, logChan chan l.LogMsg, errChan chan error, iNickname string) {
 					logMsg, err := deployProvider.CreateSnapshotImage(iNickname)
 					logChan <- logMsg
 					errChan <- err
 					<-sem
-				}(prjPair, logChan, errChan, iNickname)
+				}(project, logChan, errChan, iNickname)
 			}
 		case CmdCreateInstancesFromSnapshotImages:
 			for iNickname := range instances {
 				<-throttle
 				sem <- 1
-				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
+				go func(project *prj.Project, logChan chan l.LogMsg, errChan chan error, iNickname string) {
 					logMsg, err := deployProvider.CreateInstanceFromSnapshotImageAndWaitForCompletion(iNickname,
-						usedFlavors[prjPair.Live.Instances[iNickname].FlavorName])
+						usedFlavors[project.Instances[iNickname].FlavorName])
 					logChan <- logMsg
 					errChan <- err
 					<-sem
-				}(prjPair, logChan, errChan, iNickname)
+				}(project, logChan, errChan, iNickname)
 			}
 		case CmdDeleteSnapshotImages:
 			for iNickname := range instances {
 				<-throttle
 				sem <- 1
-				go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string) {
+				go func(project *prj.Project, logChan chan l.LogMsg, errChan chan error, iNickname string) {
 					logMsg, err := deployProvider.DeleteSnapshotImage(iNickname)
 					logChan <- logMsg
 					errChan <- err
 					<-sem
-				}(prjPair, logChan, errChan, iNickname)
+				}(project, logChan, errChan, iNickname)
 			}
 		default:
 			log.Fatalf("unknown create/delete instance command:" + os.Args[1])
@@ -366,9 +440,14 @@ func main() {
 			log.Fatalf(err.Error())
 		}
 
-		instances, err := filterByNickname(nicknames, prjPair.Live.Instances, "instance")
+		instances, err := filterByNickname(nicknames, project.Instances, "instance")
 		if err != nil {
 			log.Fatalf(err.Error())
+		}
+
+		logMsgBastionIp, err := deployProvider.PopulateInstanceExternalAddressByName()
+		if err != nil {
+			log.Fatal(logMsgBastionIp)
 		}
 
 		errorsExpected = len(instances)
@@ -381,19 +460,25 @@ func main() {
 				var finalErr error
 				switch os.Args[1] {
 				case CmdPingInstances:
-					// Just run WhoAmI
-					logMsg, finalErr = rexec.ExecCommandOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), "id", *argVerbosity)
+					logMsg, finalErr = ping(project.SshConfig, iDef.BestIpAddress(), *argVerbosity, *argNumberOfRepetitions)
+
 				case CmdInstallServices:
-					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Install, iDef.Service.Env, *argVerbosity)
+					// Make sure ping passes
+					logMsg, finalErr = ping(project.SshConfig, iDef.BestIpAddress(), *argVerbosity, 5)
+
+					// If ping passed, it's ok to move on
+					if finalErr == nil {
+						logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(project.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Install, iDef.Service.Env, *argVerbosity)
+					}
 
 				case CmdConfigServices:
-					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Config, iDef.Service.Env, *argVerbosity)
+					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(project.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Config, iDef.Service.Env, *argVerbosity)
 
 				case CmdStartServices:
-					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Start, iDef.Service.Env, *argVerbosity)
+					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(project.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Start, iDef.Service.Env, *argVerbosity)
 
 				case CmdStopServices:
-					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(prjPair.Live.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Stop, iDef.Service.Env, *argVerbosity)
+					logMsg, finalErr = rexec.ExecEmbeddedScriptsOnInstance(project.SshConfig, iDef.BestIpAddress(), iDef.Service.Cmd.Stop, iDef.Service.Env, *argVerbosity)
 
 				default:
 					log.Fatalf("unknown service command:" + os.Args[1])
@@ -402,7 +487,7 @@ func main() {
 				logChan <- logMsg
 				errChan <- finalErr
 				<-sem
-			}(&prjPair.Live, logChan, errChan, iDef)
+			}(project, logChan, errChan, iDef)
 		}
 
 	} else if os.Args[1] == CmdCreateVolumes || os.Args[1] == CmdAttachVolumes || os.Args[1] == CmdDetachVolumes || os.Args[1] == CmdDeleteVolumes {
@@ -411,7 +496,7 @@ func main() {
 			log.Fatalf(err.Error())
 		}
 
-		instances, err := filterByNickname(nicknames, prjPair.Live.Instances, "instance")
+		instances, err := filterByNickname(nicknames, project.Instances, "instance")
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -432,33 +517,41 @@ func main() {
 				sem <- 1
 				switch os.Args[1] {
 				case CmdCreateVolumes:
-					go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
+					go func(project *prj.Project, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
 						logMsg, err := deployProvider.CreateVolume(iNickname, volNickname)
 						logChan <- logMsg
 						errChan <- err
 						<-sem
-					}(prjPair, logChan, errChan, iNickname, volNickname)
+					}(project, logChan, errChan, iNickname, volNickname)
 				case CmdAttachVolumes:
-					go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
+					logMsgBastionIp, err := deployProvider.PopulateInstanceExternalAddressByName()
+					if err != nil {
+						log.Fatal(logMsgBastionIp)
+					}
+					go func(project *prj.Project, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
 						logMsg, err := deployProvider.AttachVolume(iNickname, volNickname)
 						logChan <- logMsg
 						errChan <- err
 						<-sem
-					}(prjPair, logChan, errChan, iNickname, volNickname)
+					}(project, logChan, errChan, iNickname, volNickname)
 				case CmdDetachVolumes:
-					go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
+					logMsgBastionIp, err := deployProvider.PopulateInstanceExternalAddressByName()
+					if err != nil {
+						log.Fatal(logMsgBastionIp)
+					}
+					go func(project *prj.Project, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
 						logMsg, err := deployProvider.DetachVolume(iNickname, volNickname)
 						logChan <- logMsg
 						errChan <- err
 						<-sem
-					}(prjPair, logChan, errChan, iNickname, volNickname)
+					}(project, logChan, errChan, iNickname, volNickname)
 				case CmdDeleteVolumes:
-					go func(prjPair *prj.ProjectPair, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
+					go func(project *prj.Project, logChan chan l.LogMsg, errChan chan error, iNickname string, volNickname string) {
 						logMsg, err := deployProvider.DeleteVolume(iNickname, volNickname)
 						logChan <- logMsg
 						errChan <- err
 						<-sem
-					}(prjPair, logChan, errChan, iNickname, volNickname)
+					}(project, logChan, errChan, iNickname, volNickname)
 				default:
 					log.Fatalf("unknown command:" + os.Args[1])
 				}
@@ -470,9 +563,17 @@ func main() {
 
 	finalCmdErr := waitForWorkers(errorsExpected, errChan, logChan)
 
-	// Save updated project template, it may have some new ids and timestamps
-	if prjErr = prjPair.Template.SaveProject(fullPrjPath); prjErr != nil {
-		log.Fatalf(prjErr.Error())
+	// // Save updated project template, it may have some new ids and timestamps
+	// if prjErr = prjPair.Template.SaveProject(fullPrjPath); prjErr != nil {
+	// 	log.Fatalf(prjErr.Error())
+	// }
+
+	if *argShowProjectDetails {
+		prjJsonBytes, err := json.MarshalIndent(project, "", "    ")
+		if err != nil {
+			log.Fatalf("cannot show project json: %s", err.Error())
+		}
+		fmt.Printf("%s\n", string(prjJsonBytes))
 	}
 
 	if finalCmdErr > 0 {

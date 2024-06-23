@@ -11,11 +11,11 @@
             "mode": "debug",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/pkg/cmd/capideploy/capideploy.go",
-            "envFile": "${env:HOME}/capideploy_sample.rc",
+            "envFile": "${env:HOME}/capideploy_aws.rc",
             "args": [
-                "list_deployment_resources",
-                "-prj=sample.json",
-                "--verbose"
+                "delete_networking",
+                "-p=sample.jsonnet",
+                "-v"
             ]
         },
     ]

@@ -1,45 +1,99 @@
 package provider
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 )
 
+func ensureFloatingIp(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, ipName string) (string, error) {
+	existingIp, _, _, err := cldaws.GetPublicIpAddressAllocationAssociatedInstanceByName(client, goCtx, lb, ipName)
+	if err != nil {
+		return "", err
+	}
+	if existingIp != "" {
+		return existingIp, nil
+	}
+	return cldaws.AllocateFloatingIpByName(client, goCtx, tags, lb, ipName)
+}
+
 func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
-	bastionIp, err := cldaws.AllocateFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, "bastion")
+	bastionIpName := p.GetCtx().Project.SshConfig.BastionExternalIpAddressName
+	bastionIpAddress, err := ensureFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, bastionIpName)
 	if err != nil {
 		return lb.Complete(err)
 	}
-	p.GetCtx().PrjPair.SetSshExternalIp(bastionIp)
-
-	natgwIp, err := cldaws.AllocateFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, "natgw")
-	if err != nil {
-		return lb.Complete(err)
-	}
-	p.GetCtx().PrjPair.SetNatGatewayExternalIp(natgwIp)
+	p.GetCtx().Project.SetSshBastionExternalIp(bastionIpName, bastionIpAddress)
 
 	// Tell the user about the bastion IP
-	reportPublicIp(&p.GetCtx().PrjPair.Live)
+	reportPublicIp(p.GetCtx().Project)
+
+	natgwIpName := p.GetCtx().Project.Network.PublicSubnet.NatGatewayExternalIpName
+	_, err = ensureFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, natgwIpName)
+	if err != nil {
+		return lb.Complete(err)
+	}
+	//p.GetCtx().PrjPair.SetPublicSubnetNatGatewayExternalIp(natgwIp)
 
 	return lb.Complete(nil)
+}
+
+func releaseFloatingIpIfNotAllocated(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, ipName string) error {
+	existingIp, existingIpAllocationId, existingIpAssociatedInstance, err := cldaws.GetPublicIpAddressAllocationAssociatedInstanceByName(client, goCtx, lb, ipName)
+	if err != nil {
+		return err
+	}
+	if existingIp == "" {
+		return fmt.Errorf("cannot release ip named %s, it was not allocated", ipName)
+	}
+	if existingIpAssociatedInstance != "" {
+		return fmt.Errorf("cannot release ip named %s, it is associated with instance %s", ipName, existingIpAssociatedInstance)
+	}
+	return cldaws.ReleaseFloatingIpByAllocationId(client, goCtx, lb, existingIpAllocationId)
 }
 
 func (p *AwsDeployProvider) DeleteFloatingIps() (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 
-	err := cldaws.ReleaseFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().PrjPair.Live.SshConfig.ExternalIpAddress)
+	bastionIpName := p.GetCtx().Project.SshConfig.BastionExternalIpAddressName
+	err := releaseFloatingIpIfNotAllocated(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, bastionIpName)
 	if err != nil {
 		return lb.Complete(err)
 	}
-	p.GetCtx().PrjPair.SetSshExternalIp("")
+	p.GetCtx().Project.SetSshBastionExternalIp(bastionIpName, "")
 
-	err = cldaws.ReleaseFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().PrjPair.Live.Network.PublicSubnet.NatGatewayPublicIp)
+	err = releaseFloatingIpIfNotAllocated(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.PublicSubnet.NatGatewayExternalIpName)
 	if err != nil {
 		return lb.Complete(err)
 	}
-	p.GetCtx().PrjPair.SetNatGatewayExternalIp("")
+	//p.GetCtx().PrjPair.SetPublicSubnetNatGatewayExternalIp("")
+
+	return lb.Complete(nil)
+}
+
+func (p *AwsDeployProvider) PopulateInstanceExternalAddressByName() (l.LogMsg, error) {
+	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	ipAddressName := p.GetCtx().Project.SshConfig.BastionExternalIpAddressName
+	ipAddress, _, _, err := cldaws.GetPublicIpAddressAllocationAssociatedInstanceByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, ipAddressName)
+	if err != nil {
+		return lb.Complete(err)
+	}
+
+	if ipAddress == "" {
+		return lb.Complete(fmt.Errorf("ip address %s was not allocated, did you call create_public_ips?", ipAddressName))
+	}
+
+	// This updates the project!
+	for _, iDef := range p.GetCtx().Project.Instances {
+		if iDef.ExternalIpAddressName == ipAddressName {
+			iDef.ExternalIpAddress = ipAddress
+		}
+	}
 
 	return lb.Complete(nil)
 }

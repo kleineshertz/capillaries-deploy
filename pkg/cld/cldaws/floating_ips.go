@@ -10,71 +10,46 @@ import (
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 )
 
-func GetPublicIpAllocation(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, publicIp string) (string, error) {
-	if publicIp == "" {
-		return "", fmt.Errorf("empty parameter not allowed: publicIp (%s)", publicIp)
-	}
-	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{PublicIps: []string{publicIp}})
+func GetPublicIpAddressAllocationAssociatedInstanceByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, ipName string) (string, string, string, error) {
+	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{ipName}}}})
 	lb.AddObject("DescribeAddresses", out)
 	if err != nil {
-		return "", fmt.Errorf("cannot get public IP %s allocation id: %s", publicIp, err.Error())
+		return "", "", "", fmt.Errorf("cannot get public ip named %s: %s", ipName, err.Error())
 	}
 	if len(out.Addresses) == 0 {
-		return "", nil
+		return "", "", "", nil
 	}
 
-	return *out.Addresses[0].AllocationId, nil
+	var allocationId string
+	if out.Addresses[0].AllocationId != nil {
+		allocationId = *out.Addresses[0].AllocationId
+	}
+
+	var instanceId string
+	if out.Addresses[0].InstanceId != nil {
+		instanceId = *out.Addresses[0].InstanceId
+	}
+
+	return *out.Addresses[0].PublicIp, allocationId, instanceId, nil
 }
 
-func GetPublicIpAssoiatedInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, publicIp string) (string, error) {
-	if publicIp == "" {
-		return "", fmt.Errorf("empty parameter not allowed: publicIp (%s)", publicIp)
-	}
-	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{PublicIps: []string{publicIp}})
-	//Filters: []types.Filter{{Name: aws.String("public-ip"), Values: []string{publicIp}}}})
-	lb.AddObject("DescribeAddresses", out)
-	if err != nil {
-		return "", fmt.Errorf("cannot check public IP instance id %s:%s", publicIp, err.Error())
-	}
-
-	if len(out.Addresses) > 0 && out.Addresses[0].InstanceId != nil {
-		return *out.Addresses[0].InstanceId, nil
-	}
-
-	return "", nil
-}
-
-func AllocateFloatingIp(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, publicIpDesc string) (string, error) {
-	if publicIpDesc == "" {
-		return "", fmt.Errorf("empty parameter not allowed: publicIpDesc (%s)", publicIpDesc)
-	}
+func AllocateFloatingIpByName(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, ipName string) (string, error) {
 	out, err := client.AllocateAddress(goCtx, &ec2.AllocateAddressInput{TagSpecifications: []types.TagSpecification{{
 		ResourceType: types.ResourceTypeElasticIp,
-		Tags:         mapToTags(publicIpDesc, tags)}}})
+		Tags:         mapToTags(ipName, tags)}}})
 	lb.AddObject("AllocateAddress", out)
 	if err != nil {
-		return "", fmt.Errorf("cannot allocate %s IP address:%s", publicIpDesc, err.Error())
+		return "", fmt.Errorf("cannot allocate %s IP address:%s", ipName, err.Error())
 	}
 
 	return *out.PublicIp, nil
 }
 
-func ReleaseFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, publicIp string) error {
-	if publicIp == "" {
-		return fmt.Errorf("empty parameter not allowed: publicIp (%s)", publicIp)
-	}
-
-	allocationId, err := GetPublicIpAllocation(client, goCtx, lb, publicIp)
+func ReleaseFloatingIpByAllocationId(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, allocationId string) error {
+	outDel, err := client.ReleaseAddress(goCtx, &ec2.ReleaseAddressInput{AllocationId: aws.String(allocationId)})
+	lb.AddObject("ReleaseAddress", outDel)
 	if err != nil {
-		return fmt.Errorf("cannot find IP address %s to delete:%s", publicIp, err.Error())
-	}
-
-	if allocationId != "" {
-		outDel, err := client.ReleaseAddress(goCtx, &ec2.ReleaseAddressInput{AllocationId: aws.String(allocationId)})
-		lb.AddObject("ReleaseAddress", outDel)
-		if err != nil {
-			return fmt.Errorf("cannot release IP address %s to delete:%s", publicIp, err.Error())
-		}
+		return fmt.Errorf("cannot release IP address allocation id %s: %s", allocationId, err.Error())
 	}
 	return nil
 }

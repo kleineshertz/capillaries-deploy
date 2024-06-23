@@ -22,14 +22,13 @@ func TagResource(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, re
 }
 
 func mapToTags(tagName string, tagMap map[string]string) []types.Tag {
-	if tagMap == nil {
-		return []types.Tag{{Key: aws.String("Name"), Value: aws.String(tagName)}}
-	}
 	result := make([]types.Tag, len(tagMap))
-	tagIdx := 0
-	for tagName, tagVal := range tagMap {
-		result[tagIdx] = types.Tag{Key: aws.String(tagName), Value: aws.String(tagVal)}
-		tagIdx++
+	if tagMap != nil {
+		tagIdx := 0
+		for tagName, tagVal := range tagMap {
+			result[tagIdx] = types.Tag{Key: aws.String(tagName), Value: aws.String(tagVal)}
+			tagIdx++
+		}
 	}
 	if tagName != "" {
 		result = append(result, types.Tag{Key: aws.String("Name"), Value: aws.String(tagName)})

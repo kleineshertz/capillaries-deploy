@@ -302,6 +302,19 @@ func CreateRouteTableForVpc(client *ec2.Client, goCtx context.Context, tags map[
 	return *out.RouteTable.RouteTableId, nil
 }
 
+func GetRouteTableByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableName string) (string, string, error) {
+	out, err := client.DescribeRouteTables(goCtx, &ec2.DescribeRouteTablesInput{
+		Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{routeTableName}}}})
+	lb.AddObject("DescribeRouteTable", out)
+	if err != nil {
+		return "", "", fmt.Errorf("cannot find route table %s: %s", routeTableName, err.Error())
+	}
+	if len(out.RouteTables) == 0 {
+		return "", "", nil
+	}
+	return *out.RouteTables[0].RouteTableId, *out.RouteTables[0].VpcId, nil
+}
+
 func DeleteRouteTable(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableId string) error {
 	if routeTableId == "" {
 		return fmt.Errorf("empty parameter not allowed: routeTableId (%s)", routeTableId)

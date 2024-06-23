@@ -10,7 +10,7 @@ set -x # Print commands
 
 go build ./pkg/cmd/capideploy/capideploy.go
 
-./capideploy list_deployment_resources -prj=./sample.json --verbose > deploy.log
+./capideploy list_deployment_resources -p sample.jsonnet -v > deploy.log
 
 set +x
 SECONDS=0
@@ -21,7 +21,7 @@ fi
 
 set -x # Print commands
 
-./capideploy create_floating_ips -prj=sample.json --verbose >> deploy.log
+./capideploy create_floating_ips -p sample.jsonnet -v >> deploy.log
 
 set +x
 
@@ -45,22 +45,19 @@ fi
 
 set -x
 
-./capideploy create_networking -prj=sample.json --verbose >> deploy.log
-./capideploy create_security_groups -prj=sample.json --verbose >> deploy.log
-./capideploy create_volumes "*" -prj=sample.json --verbose >> deploy.log
-./capideploy create_instances "*" -prj=sample.json --verbose >> deploy.log
-set +e
-until ./capideploy ping_instances '*' -prj=sample.json; do echo "Ping failed, waiting..."; sleep 5; done
-set -e
+./capideploy create_networking -p sample.jsonnet -v >> deploy.log
+./capideploy create_security_groups -p sample.jsonnet -v >> deploy.log
+./capideploy create_volumes "*" -p sample.jsonnet -v >> deploy.log
+./capideploy create_instances "*" -p sample.jsonnet -v >> deploy.log
+./capideploy ping_instances '*' -p sample.jsonnet -n 20
+./capideploy attach_volumes "bastion" -p sample.jsonnet -v >> deploy.log
+./capideploy install_services "*" -p sample.jsonnet -v >> deploy.log
 
-./capideploy attach_volumes "bastion" -prj=sample.json --verbose >> deploy.log
-./capideploy install_services "*" -prj=sample.json --verbose >> deploy.log
+# Cassandra requires special treatment: stop and config/start
+./capideploy stop_services "cass*" -p sample.jsonnet -v >> deploy.log
+./capideploy config_services "cass*" -p sample.jsonnet -v >> deploy.log
 
-# Cassandra requires special treatment: stop and start
-./capideploy stop_services "cass*" -prj=sample.json --verbose >> deploy.log
-./capideploy config_services "cass*" -prj=sample.json --verbose >> deploy.log
-
-./capideploy config_services "bastion,rabbitmq,prometheus,daemon*" -prj=sample.json --verbose >> deploy.log
+./capideploy config_services "bastion,rabbitmq,prometheus,daemon*" -p sample.jsonnet -v >> deploy.log
 
 ssh -o StrictHostKeyChecking=no -i $CAPIDEPLOY_SSH_PRIVATE_KEY_PATH -J $BASTION_IP $CAPIDEPLOY_SSH_USER@10.5.0.11 'nodetool describecluster;nodetool status'
 

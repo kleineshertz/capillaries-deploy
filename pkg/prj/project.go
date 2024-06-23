@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/capillariesio/capillaries-deploy/pkg/rexec"
+	"github.com/google/go-jsonnet"
 )
 
 type InstancePurpose string
 
 const (
-	InstancePurposeBastion    InstancePurpose = "bastion"
-	InstancePurposeCassandra  InstancePurpose = "cassandra"
-	InstancePurposeDaemon     InstancePurpose = "daemon"
-	InstancePurposeRabbitmq   InstancePurpose = "rabbitmq"
-	InstancePurposePrometheus InstancePurpose = "prometheus"
+	InstancePurposeBastion    InstancePurpose = "CAPIDEPLOY.INTERNAL.PURPOSE_BASTION"
+	InstancePurposeCassandra  InstancePurpose = "CAPIDEPLOY.INTERNAL.PURPOSE_CASSANDRA"
+	InstancePurposeDaemon     InstancePurpose = "CAPIDEPLOY.INTERNAL.PURPOSE_DAEMON"
+	InstancePurposeRabbitmq   InstancePurpose = "CAPIDEPLOY.INTERNAL.PURPOSE_RABBITMQ"
+	InstancePurposePrometheus InstancePurpose = "CAPIDEPLOY.INTERNAL.PURPOSE_PROMETHEUS"
 )
 
 type ExecTimeouts struct {
@@ -59,8 +61,8 @@ func (t *ExecTimeouts) InitDefaults() {
 }
 
 type SecurityGroupRuleDef struct {
-	Desc      string `json:"desc"`      // human-readable
-	Id        string `json:"id"`        // guid
+	Desc string `json:"desc"` // human-readable
+	//Id        string `json:"id"`        // guid
 	Protocol  string `json:"protocol"`  // tcp
 	Ethertype string `json:"ethertype"` // IPv4
 	RemoteIp  string `json:"remote_ip"` // 0.0.0.0/0
@@ -69,45 +71,47 @@ type SecurityGroupRuleDef struct {
 }
 
 type SecurityGroupDef struct {
-	Name  string                  `json:"name"`
-	Id    string                  `json:"id"`
+	Name string `json:"name"`
+	//Id    string                  `json:"id"`
 	Rules []*SecurityGroupRuleDef `json:"rules"`
 }
 
-func (sg *SecurityGroupDef) Clean() {
-	sg.Id = ""
-	for _, r := range sg.Rules {
-		r.Id = ""
-	}
-}
+// func (sg *SecurityGroupDef) Clean() {
+// 	sg.Id = ""
+// 	for _, r := range sg.Rules {
+// 		r.Id = ""
+// 	}
+// }
 
 type PrivateSubnetDef struct {
-	Name             string `json:"name"`
-	Id               string `json:"id"`
-	Cidr             string `json:"cidr"`
-	AvailabilityZone string `json:"availability_zone"`  // AWS only
-	RouteTableToNat  string `json:"route_table_to_nat"` // AWS only
+	Name string `json:"name"`
+	//Id               string `json:"id"`
+	Cidr                  string `json:"cidr"`
+	RouteTableToNatgwName string `json:"route_table_to_nat_gateway_name"` // AWS only
+	AvailabilityZone      string `json:"availability_zone"`               // AWS only
+	//RouteTableToNat  string `json:"route_table_to_nat"` // AWS only
 }
 
 // AWS-specific
 type PublicSubnetDef struct {
-	Name               string `json:"name"`
-	Id                 string `json:"id"`
-	Cidr               string `json:"cidr"`
-	AvailabilityZone   string `json:"availability_zone"`
-	NatGatewayName     string `json:"nat_gateway_name"`
-	NatGatewayId       string `json:"nat_gateway_id"`
-	NatGatewayPublicIp string `json:"nat_gateway_public_ip"`
+	Name                     string `json:"name"`
+	Cidr                     string `json:"cidr"`
+	AvailabilityZone         string `json:"availability_zone"`
+	NatGatewayName           string `json:"nat_gateway_name"`
+	NatGatewayExternalIpName string `json:"nat_gateway_external_ip_address_name"`
+	//Id                       string //`json:"id"`
+	//NatGatewayId         string //`json:"nat_gateway_id"`
+	//NatGatewayExternalIp string //`json:"nat_gateway_public_ip"`
 }
 
 type RouterDef struct {
 	Name string `json:"name"`
-	Id   string `json:"id"`
+	//Id   string `json:"id"`
 }
 
 type NetworkDef struct {
-	Name          string           `json:"name"`
-	Id            string           `json:"id"`
+	Name string `json:"name"`
+	//Id            string           `json:"id"`
 	Cidr          string           `json:"cidr"`
 	PrivateSubnet PrivateSubnetDef `json:"private_subnet"`
 	PublicSubnet  PublicSubnetDef  `json:"public_subnet"`
@@ -122,9 +126,9 @@ type VolumeDef struct {
 	Permissions      int    `json:"permissions"`
 	Owner            string `json:"owner"`
 	AvailabilityZone string `json:"availability_zone"`
-	VolumeId         string `json:"id"`
-	Device           string `json:"device"`
-	BlockDeviceId    string `json:"block_device_id"`
+	//VolumeId         string `json:"id"`
+	//Device           string `json:"device"`
+	//BlockDeviceId    string `json:"block_device_id"`
 }
 
 type ServiceCommandsDef struct {
@@ -147,37 +151,43 @@ type PrivateKeyDef struct {
 	PrivateKeyPath string `json:"private_key_path"`
 }
 type InstanceDef struct {
-	Purpose                        string                `json:"purpose"`
-	InstName                       string                `json:"inst_name"`
-	SecurityGroupNickname          string                `json:"security_group"`
-	RootKeyName                    string                `json:"root_key_name"`
-	IpAddress                      string                `json:"ip_address"`
-	UsesSshConfigExternalIpAddress bool                  `json:"uses_ssh_config_external_ip_address,omitempty"`
-	ExternalIpAddress              string                `json:"external_ip_address,omitempty"`
-	FlavorName                     string                `json:"flavor"`
-	ImageId                        string                `json:"image_id"`
-	SubnetType                     string                `json:"subnet_type"`
-	Volumes                        map[string]*VolumeDef `json:"volumes,omitempty"`
-	Id                             string                `json:"id"`
-	SnapshotImageId                string                `json:"snapshot_image_id"`
-	Service                        ServiceDef            `json:"service"`
+	Purpose  string `json:"purpose"`
+	InstName string `json:"inst_name"`
+	//SecurityGroupNickname string                `json:"security_group"`
+	SecurityGroupName     string `json:"security_group_name"`
+	RootKeyName           string `json:"root_key_name"`
+	IpAddress             string `json:"ip_address"`
+	ExternalIpAddressName string `json:"external_ip_address_name,omitempty"` // Populated for bastion only
+	FlavorName            string `json:"flavor"`
+	ImageId               string `json:"image_id"`
+	//SubnetType            string                `json:"subnet_type"`
+	SubnetName string                `json:"subnet_name"`
+	Volumes    map[string]*VolumeDef `json:"volumes,omitempty"`
+	//Id                    string                `json:"id"`
+	//SnapshotImageId       string                `json:"snapshot_image_id"`
+	Service           ServiceDef `json:"service"`
+	ExternalIpAddress string     // Populated for bastion only
+	//UsesSshConfigExternalIpAddress bool                  `json:"uses_ssh_config_external_ip_address,omitempty"`
 }
 
 func (iDef *InstanceDef) BestIpAddress() string {
-	if iDef.ExternalIpAddress != "" {
+	if iDef.ExternalIpAddressName != "" {
+		if iDef.ExternalIpAddress == "" {
+			return "you-did-not-call-ensurebastionip"
+		}
 		return iDef.ExternalIpAddress
 	}
 	return iDef.IpAddress
 }
 
-func (iDef *InstanceDef) Clean() {
-	iDef.Id = ""
-	for _, volAttachDef := range iDef.Volumes {
-		volAttachDef.Device = ""
-		volAttachDef.BlockDeviceId = ""
-		// Do not clean volAttachDef.VolumeId, it should be handled by delete_volumes
-	}
-}
+// func (iDef *InstanceDef) Clean() {
+// 	iDef.Id = ""
+// 	for _, volAttachDef := range iDef.Volumes {
+// 		volAttachDef.Device = ""
+// 		volAttachDef.BlockDeviceId = ""
+// 		// Do not clean volAttachDef.VolumeId, it should be handled by delete_volumes
+// 	}
+// }
 
 type Project struct {
 	DeploymentName     string                       `json:"deployment_name"`
@@ -197,111 +207,124 @@ func (p *Project) InitDefaults() {
 const DeployProviderAws string = "aws"
 
 type ProjectPair struct {
-	Template           Project
-	Live               Project
-	ProjectFileDirPath string
+	// Template Project
+	Live Project
+	// ProjectFileDirPath string
 }
 
-func (prjPair *ProjectPair) SetSecurityGroupId(sgNickname string, newId string) {
-	prjPair.Template.SecurityGroups[sgNickname].Id = newId
-	prjPair.Live.SecurityGroups[sgNickname].Id = newId
-}
+// func (prjPair *ProjectPair) SetSecurityGroupId(sgNickname string, newId string) {
+// 	prjPair.Template.SecurityGroups[sgNickname].Id = newId
+// 	prjPair.Live.SecurityGroups[sgNickname].Id = newId
+// }
 
-func (prjPair *ProjectPair) SetSecurityGroupRuleId(sgNickname string, ruleIdx int, newId string) {
-	prjPair.Template.SecurityGroups[sgNickname].Rules[ruleIdx].Id = newId
-	prjPair.Live.SecurityGroups[sgNickname].Rules[ruleIdx].Id = newId
-}
+// func (prjPair *ProjectPair) SetSecurityGroupRuleId(sgNickname string, ruleIdx int, newId string) {
+// 	prjPair.Template.SecurityGroups[sgNickname].Rules[ruleIdx].Id = newId
+// 	prjPair.Live.SecurityGroups[sgNickname].Rules[ruleIdx].Id = newId
+// }
 
-func (prjPair *ProjectPair) CleanSecurityGroup(sgNickname string) {
-	prjPair.Template.SecurityGroups[sgNickname].Clean()
-	prjPair.Live.SecurityGroups[sgNickname].Clean()
-}
+// func (prjPair *ProjectPair) CleanSecurityGroup(sgNickname string) {
+// 	prjPair.Template.SecurityGroups[sgNickname].Clean()
+// 	prjPair.Live.SecurityGroups[sgNickname].Clean()
+// }
 
-func (prjPair *ProjectPair) SetNetworkId(newId string) {
-	prjPair.Template.Network.Id = newId
-	prjPair.Live.Network.Id = newId
-}
+// func (prjPair *ProjectPair) SetNetworkId(newId string) {
+// 	prjPair.Template.Network.Id = newId
+// 	prjPair.Live.Network.Id = newId
+// }
 
-func (prjPair *ProjectPair) SetRouterId(newId string) {
-	prjPair.Template.Network.Router.Id = newId
-	prjPair.Live.Network.Router.Id = newId
-}
+// func (prjPair *ProjectPair) SetRouterId(newId string) {
+// 	prjPair.Template.Network.Router.Id = newId
+// 	prjPair.Live.Network.Router.Id = newId
+// }
 
-func (prjPair *ProjectPair) SetNatGatewayId(newId string) {
-	prjPair.Template.Network.PublicSubnet.NatGatewayId = newId
-	prjPair.Live.Network.PublicSubnet.NatGatewayId = newId
-}
+// func (prjPair *ProjectPair) SetNatGatewayId(newId string) {
+// 	prjPair.Template.Network.PublicSubnet.NatGatewayId = newId
+// 	prjPair.Live.Network.PublicSubnet.NatGatewayId = newId
+// }
 
-func (prjPair *ProjectPair) SetRouteTableToNat(newId string) {
-	prjPair.Template.Network.PrivateSubnet.RouteTableToNat = newId
-	prjPair.Live.Network.PrivateSubnet.RouteTableToNat = newId
-}
+// func (prjPair *ProjectPair) SetRouteTableToNat(newId string) {
+// 	prjPair.Template.Network.PrivateSubnet.RouteTableToNat = newId
+// 	prjPair.Live.Network.PrivateSubnet.RouteTableToNat = newId
+// }
 
-func (prjPair *ProjectPair) SetSshExternalIp(newIp string) {
-	prjPair.Template.SshConfig.ExternalIpAddress = newIp
-	prjPair.Live.SshConfig.ExternalIpAddress = newIp
-	for _, iDef := range prjPair.Template.Instances {
-		if iDef.UsesSshConfigExternalIpAddress {
+func (p *Project) SetSshBastionExternalIp(ipName string, newIp string) {
+	//prjPair.Template.SshConfig.BastionExternalIp = newIp
+	p.SshConfig.BastionExternalIp = newIp
+
+	// for _, iDef := range prjPair.Template.Instances {
+	// 	if iDef.ExternalIpAddressName == ipName {
+	// 		iDef.ExternalIpAddress = newIp
+	// 	}
+	// }
+	for _, iDef := range p.Instances {
+		if iDef.ExternalIpAddressName == ipName {
 			iDef.ExternalIpAddress = newIp
 		}
-	}
-	for _, iDef := range prjPair.Live.Instances {
-		if iDef.UsesSshConfigExternalIpAddress {
-			iDef.ExternalIpAddress = newIp
+
+		// In env variables
+		replaceMap := map[string]string{}
+		for varName, varValue := range iDef.Service.Env {
+			if strings.Contains(varValue, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}") {
+				replaceMap[varName] = strings.ReplaceAll(varValue, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}", newIp)
+			}
+		}
+		for varName, varValue := range replaceMap {
+			iDef.Service.Env[varName] = varValue
 		}
 	}
+
 }
 
-func (prjPair *ProjectPair) SetNatGatewayExternalIp(newIp string) {
-	prjPair.Template.Network.PublicSubnet.NatGatewayPublicIp = newIp
-	prjPair.Live.Network.PublicSubnet.NatGatewayPublicIp = newIp
-}
+// func (prjPair *ProjectPair) SetPublicSubnetNatGatewayExternalIp(newIp string) {
+// 	prjPair.Template.Network.PublicSubnet.NatGatewayExternalIp = newIp
+// 	prjPair.Live.Network.PublicSubnet.NatGatewayExternalIp = newIp
+// }
 
-func (prjPair *ProjectPair) SetPrivateSubnetId(newId string) {
-	prjPair.Template.Network.PrivateSubnet.Id = newId
-	prjPair.Live.Network.PrivateSubnet.Id = newId
-}
+// func (prjPair *ProjectPair) SetPrivateSubnetId(newId string) {
+// 	prjPair.Template.Network.PrivateSubnet.Id = newId
+// 	prjPair.Live.Network.PrivateSubnet.Id = newId
+// }
 
-func (prjPair *ProjectPair) SetPublicSubnetId(newId string) {
-	prjPair.Template.Network.PublicSubnet.Id = newId
-	prjPair.Live.Network.PublicSubnet.Id = newId
-}
+// func (prjPair *ProjectPair) SetPublicSubnetId(newId string) {
+// 	prjPair.Template.Network.PublicSubnet.Id = newId
+// 	prjPair.Live.Network.PublicSubnet.Id = newId
+// }
 
-func (prjPair *ProjectPair) SetVolumeId(iNickname string, volNickname string, newId string) {
-	prjPair.Template.Instances[iNickname].Volumes[volNickname].VolumeId = newId
-	prjPair.Live.Instances[iNickname].Volumes[volNickname].VolumeId = newId
-}
+// func (prjPair *ProjectPair) SetVolumeId(iNickname string, volNickname string, newId string) {
+// 	prjPair.Template.Instances[iNickname].Volumes[volNickname].VolumeId = newId
+// 	prjPair.Live.Instances[iNickname].Volumes[volNickname].VolumeId = newId
+// }
 
-func (prjPair *ProjectPair) SetAttachedVolumeDevice(iNickname string, volNickname string, device string) {
-	prjPair.Template.Instances[iNickname].Volumes[volNickname].Device = device
-	prjPair.Live.Instances[iNickname].Volumes[volNickname].Device = device
-}
+// func (prjPair *ProjectPair) SetAttachedVolumeDevice(iNickname string, volNickname string, device string) {
+// 	prjPair.Template.Instances[iNickname].Volumes[volNickname].Device = device
+// 	prjPair.Live.Instances[iNickname].Volumes[volNickname].Device = device
+// }
 
-func (prjPair *ProjectPair) SetVolumeBlockDeviceId(iNickname string, volNickname string, newId string) {
-	prjPair.Template.Instances[iNickname].Volumes[volNickname].BlockDeviceId = newId
-	prjPair.Live.Instances[iNickname].Volumes[volNickname].BlockDeviceId = newId
-}
+// func (prjPair *ProjectPair) SetVolumeBlockDeviceId(iNickname string, volNickname string, newId string) {
+// 	prjPair.Template.Instances[iNickname].Volumes[volNickname].BlockDeviceId = newId
+// 	prjPair.Live.Instances[iNickname].Volumes[volNickname].BlockDeviceId = newId
+// }
 
-func (prjPair *ProjectPair) CleanInstance(iNickname string) {
-	prjPair.Template.Instances[iNickname].Clean()
-	prjPair.Live.Instances[iNickname].Clean()
-}
+// func (prjPair *ProjectPair) CleanInstance(iNickname string) {
+// 	prjPair.Template.Instances[iNickname].Clean()
+// 	prjPair.Live.Instances[iNickname].Clean()
+// }
 
-func (prjPair *ProjectPair) SetInstanceId(iNickname string, newId string) {
-	prjPair.Template.Instances[iNickname].Id = newId
-	prjPair.Live.Instances[iNickname].Id = newId
-}
+// func (prjPair *ProjectPair) SetInstanceId(iNickname string, newId string) {
+// 	prjPair.Template.Instances[iNickname].Id = newId
+// 	prjPair.Live.Instances[iNickname].Id = newId
+// }
 
-func (prjPair *ProjectPair) SetInstanceSnapshotImageId(iNickname string, newId string) {
-	prjPair.Template.Instances[iNickname].SnapshotImageId = newId
-	prjPair.Live.Instances[iNickname].SnapshotImageId = newId
-}
+// func (prjPair *ProjectPair) SetInstanceSnapshotImageId(iNickname string, newId string) {
+// 	prjPair.Template.Instances[iNickname].SnapshotImageId = newId
+// 	prjPair.Live.Instances[iNickname].SnapshotImageId = newId
+// }
 
 func (prj *Project) validate() error {
 	// Check instance presence and uniqueness: hostnames, ip addresses, security groups
 	hostnameMap := map[string]struct{}{}
 	internalIpMap := map[string]struct{}{}
-	externalIpInstanceNickname := ""
+	bastionExternalIpInstanceNickname := ""
 	for iNickname, iDef := range prj.Instances {
 		if iDef.InstName == "" {
 			return fmt.Errorf("instance %s has empty Instname", iNickname)
@@ -319,24 +342,43 @@ func (prj *Project) validate() error {
 		}
 		internalIpMap[iDef.IpAddress] = struct{}{}
 
-		if iDef.UsesSshConfigExternalIpAddress {
-			if externalIpInstanceNickname != "" {
-				return fmt.Errorf("instances (%s) share external ip address %s", iNickname, externalIpInstanceNickname)
+		if iDef.ExternalIpAddressName != "" {
+			if iDef.ExternalIpAddressName != prj.SshConfig.BastionExternalIpAddressName {
+				return fmt.Errorf("instance %s has unexpeted external ip name %s, expected %s", iNickname, iDef.ExternalIpAddressName, prj.SshConfig.BastionExternalIpAddressName)
 			}
-			externalIpInstanceNickname = iNickname
+			if bastionExternalIpInstanceNickname != "" {
+				return fmt.Errorf("instances %s,%s share external ip address %s", iNickname, bastionExternalIpInstanceNickname, prj.SshConfig.BastionExternalIpAddressName)
+			}
+			bastionExternalIpInstanceNickname = iNickname
 		}
 
 		// Security groups
-		if iDef.SecurityGroupNickname == "" {
-			return fmt.Errorf("instance %s has empty security group", iNickname)
+		if iDef.SecurityGroupName == "" {
+			return fmt.Errorf("instance %s has empty security group name", iNickname)
 		}
-		if _, ok := prj.SecurityGroups[iDef.SecurityGroupNickname]; !ok {
-			return fmt.Errorf("instance %s has invalid security group %s", iNickname, iDef.SecurityGroupNickname)
+
+		sgFound := false
+		for _, sgDef := range prj.SecurityGroups {
+			if sgDef.Name == iDef.SecurityGroupName {
+				sgFound = true
+				break
+			}
+		}
+		if !sgFound {
+			return fmt.Errorf("instance %s has invalid security group %s", iNickname, iDef.SecurityGroupName)
+		}
+
+		// External ip address
+
+		if iDef.ExternalIpAddressName != "" {
+			if iDef.ExternalIpAddressName != prj.SshConfig.BastionExternalIpAddressName && iDef.ExternalIpAddressName != prj.Network.PublicSubnet.NatGatewayExternalIpName {
+				return fmt.Errorf("instance %s has invalid external ip address name %s, expected %s or %s ", iNickname, iDef.SecurityGroupName, prj.SshConfig.BastionExternalIpAddressName, prj.Network.PublicSubnet.NatGatewayExternalIpName)
+			}
 		}
 	}
 
 	// Need at least one floating ip address
-	if externalIpInstanceNickname == "" {
+	if bastionExternalIpInstanceNickname == "" {
 		return fmt.Errorf("none of the instances is using ssh_config_external_ip, at least one must have it")
 	}
 
@@ -383,48 +425,52 @@ func (prj *Project) validate() error {
 	return nil
 }
 
-func LoadProject(prjFile string) (*ProjectPair, string, error) {
+func LoadProject(prjFile string) (*Project, error) {
 	prjFullPath, err := filepath.Abs(prjFile)
 	if err != nil {
-		return nil, "", fmt.Errorf("cannot get absolute path of %s: %s", prjFile, err.Error())
+		return nil, fmt.Errorf("cannot get absolute path of %s: %s", prjFile, err.Error())
 	}
 
 	if _, err := os.Stat(prjFullPath); err != nil {
-		return nil, "", fmt.Errorf("cannot find project file [%s]: [%s]", prjFullPath, err.Error())
+		return nil, fmt.Errorf("cannot find project file [%s]: [%s]", prjFullPath, err.Error())
 	}
 
-	prjBytes, err := os.ReadFile(prjFullPath)
+	vm := jsonnet.MakeVM()
+	prjString, err := vm.EvaluateFile(prjFile)
 	if err != nil {
-		return nil, "", fmt.Errorf("cannot read project file %s: %s", prjFullPath, err.Error())
+		return nil, err
 	}
 
-	prjPair := ProjectPair{ProjectFileDirPath: filepath.Dir(prjFullPath)}
+	// prjBytes, err := os.ReadFile(prjFullPath)
+	// if err != nil {
+	// 	return nil, "", fmt.Errorf("cannot read project file %s: %s", prjFullPath, err.Error())
+	// }
+
+	//prjPair := ProjectPair{}
 
 	// Read project
 
-	err = json.Unmarshal(prjBytes, &prjPair.Template)
-	if err != nil {
-		return nil, "", fmt.Errorf("cannot parse project file %s: %s", prjFullPath, err.Error())
-	}
+	// err = json.Unmarshal(prjBytes, &prjPair.Template)
+	// if err != nil {
+	// 	return nil, "", fmt.Errorf("cannot parse project file %s: %s", prjFullPath, err.Error())
+	// }
 
-	if prjPair.Template.DeployProviderName != DeployProviderAws {
-		return nil, "", fmt.Errorf("cannot parse deploy provider name %s, expected [%s]",
-			prjPair.Template.DeployProviderName,
-			DeployProviderAws)
-	}
-
-	prjString := string(prjBytes)
+	// prjString := string(prjBytes)
 
 	envVars := map[string]string{}
 	missingVars := make([]string, 0)
-	for _, envVar := range prjPair.Template.EnvVariablesUsed {
+	r := regexp.MustCompile(`\{(CAPIDEPLOY[_A-Z0-9]+)\}`)
+	matches := r.FindAllStringSubmatch(prjString, -1)
+	for _, v := range matches {
+		envVar := v[1]
 		envVars[envVar] = os.Getenv(envVar)
 		if envVars[envVar] == "" {
 			missingVars = append(missingVars, envVar)
 		}
 	}
+
 	if len(missingVars) > 0 {
-		return nil, "", fmt.Errorf("cannot load deployment project, missing env variables:\n%v", strings.Join(missingVars, "\n"))
+		return nil, fmt.Errorf("cannot load deployment project, missing env variables:\n%v", strings.Join(missingVars, "\n"))
 	}
 
 	// Replace env vars
@@ -436,38 +482,45 @@ func LoadProject(prjFile string) (*ProjectPair, string, error) {
 	}
 
 	// Hacky way to provide bastion ip
-	prjString = strings.ReplaceAll(prjString, "{EXTERNAL_IP_ADDRESS}", prjPair.Template.SshConfig.ExternalIpAddress)
+	// prjString = strings.ReplaceAll(prjString, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}", prjPair.Template.SshConfig.BastionExternalIp)
 
 	// Re-deserialize forom prjString, now with replaced params
 
-	if err := json.Unmarshal([]byte(prjString), &prjPair.Live); err != nil {
-		return nil, "", fmt.Errorf("cannot parse project file with replaced vars %s: %s", prjFullPath, err.Error())
+	project := Project{}
+	if err := json.Unmarshal([]byte(prjString), &project); err != nil {
+		return nil, fmt.Errorf("cannot parse project file with replaced vars %s: %s", prjFullPath, err.Error())
+	}
+
+	if project.DeployProviderName != DeployProviderAws {
+		return nil, fmt.Errorf("cannot parse deploy provider name %s, expected [%s]",
+			project.DeployProviderName,
+			DeployProviderAws)
 	}
 
 	// Defaults
 
-	prjPair.Live.InitDefaults()
+	project.InitDefaults()
 
-	if err := prjPair.Live.validate(); err != nil {
-		return nil, "", fmt.Errorf("cannot load project file %s: %s", prjFullPath, err.Error())
+	if err := project.validate(); err != nil {
+		return nil, fmt.Errorf("cannot load project file %s: %s", prjFullPath, err.Error())
 	}
 
-	return &prjPair, prjFullPath, nil
+	return &project, nil
 }
 
-func (prj *Project) SaveProject(fullPrjPath string) error {
-	prjJsonBytes, err := json.MarshalIndent(prj, "", "    ")
-	if err != nil {
-		return err
-	}
+// func (prj *Project) SaveProject(fullPrjPath string) error {
+// 	prjJsonBytes, err := json.MarshalIndent(prj, "", "    ")
+// 	if err != nil {
+// 		return err
+// 	}
 
-	fPrj, err := os.Create(fullPrjPath)
-	if err != nil {
-		return err
-	}
-	defer fPrj.Close()
-	if _, err := fPrj.WriteString(string(prjJsonBytes)); err != nil {
-		return err
-	}
-	return fPrj.Sync()
-}
+// 	fPrj, err := os.Create(fullPrjPath)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer fPrj.Close()
+// 	if _, err := fPrj.WriteString(string(prjJsonBytes)); err != nil {
+// 		return err
+// 	}
+// 	return fPrj.Sync()
+// }

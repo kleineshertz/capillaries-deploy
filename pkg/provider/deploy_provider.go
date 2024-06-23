@@ -25,7 +25,8 @@ type AwsCtx struct {
 const TagCapiDeploy string = "CapiDeploy"
 
 type DeployCtx struct {
-	PrjPair   *prj.ProjectPair
+	//PrjPair   *prj.ProjectPair
+	Project   *prj.Project
 	GoCtx     context.Context
 	IsVerbose bool
 	Aws       *AwsCtx
@@ -44,7 +45,7 @@ type DeployProvider interface {
 	HarvestImageIds(imageMap map[string]bool) (l.LogMsg, error)
 	VerifyKeypairs(keypairMap map[string]struct{}) (l.LogMsg, error)
 	CreateInstanceAndWaitForCompletion(iNickname string, flavorId string, imageId string) (l.LogMsg, error)
-	DeleteInstance(iNickname string) (l.LogMsg, error)
+	DeleteInstance(iNickname string, ignoreAttachedVolumes bool) (l.LogMsg, error)
 	CreateSnapshotImage(iNickname string) (l.LogMsg, error)
 	CreateInstanceFromSnapshotImageAndWaitForCompletion(iNickname string, flavorId string) (l.LogMsg, error)
 	DeleteSnapshotImage(iNickname string) (l.LogMsg, error)
@@ -52,6 +53,7 @@ type DeployProvider interface {
 	AttachVolume(iNickname string, volNickname string) (l.LogMsg, error)
 	DetachVolume(iNickname string, volNickname string) (l.LogMsg, error)
 	DeleteVolume(iNickname string, volNickname string) (l.LogMsg, error)
+	PopulateInstanceExternalAddressByName() (l.LogMsg, error)
 }
 
 type AwsDeployProvider struct {
@@ -62,8 +64,8 @@ func (p *AwsDeployProvider) GetCtx() *DeployCtx {
 	return p.Ctx
 }
 
-func DeployProviderFactory(prjPair *prj.ProjectPair, goCtx context.Context, isVerbose bool) (DeployProvider, error) {
-	if prjPair.Live.DeployProviderName == prj.DeployProviderAws {
+func DeployProviderFactory(project *prj.Project, goCtx context.Context, isVerbose bool) (DeployProvider, error) {
+	if project.DeployProviderName == prj.DeployProviderAws {
 		cfg, err := config.LoadDefaultConfig(goCtx)
 		if err != nil {
 			return nil, err
@@ -71,10 +73,10 @@ func DeployProviderFactory(prjPair *prj.ProjectPair, goCtx context.Context, isVe
 
 		return &AwsDeployProvider{
 			Ctx: &DeployCtx{
-				PrjPair:   prjPair,
+				Project:   project,
 				GoCtx:     goCtx,
 				IsVerbose: isVerbose,
-				Tags:      map[string]string{TagCapiDeploy: prjPair.Live.DeploymentName},
+				Tags:      map[string]string{TagCapiDeploy: project.DeploymentName},
 				Aws: &AwsCtx{
 					Ec2Client:          ec2.NewFromConfig(cfg),
 					TaggingClient:      resourcegroupstaggingapi.NewFromConfig(cfg),
@@ -83,7 +85,7 @@ func DeployProviderFactory(prjPair *prj.ProjectPair, goCtx context.Context, isVe
 			},
 		}, nil
 	}
-	return nil, fmt.Errorf("unsupported deploy provider %s", prjPair.Live.DeployProviderName)
+	return nil, fmt.Errorf("unsupported deploy provider %s", project.DeployProviderName)
 }
 
 func reportPublicIp(prj *prj.Project) {
@@ -101,15 +103,15 @@ Also, you may find it convenient to use in your commands:
 export BASTION_IP=%s
 
 `,
-		prj.SshConfig.ExternalIpAddress,
+		prj.SshConfig.BastionExternalIp,
 		prj.SshConfig.User,
 		prj.SshConfig.PrivateKeyPath,
-		prj.SshConfig.ExternalIpAddress)
+		prj.SshConfig.BastionExternalIp)
 }
 
 func (p *AwsDeployProvider) ListDeploymentResources() (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
-	resources, err := cldaws.GetResourcesByTag(p.GetCtx().Aws.TaggingClient, p.GetCtx().Aws.CloudControlClient, p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Aws.Config.Region, TagCapiDeploy, p.Ctx.PrjPair.Live.DeploymentName)
+	resources, err := cldaws.GetResourcesByTag(p.GetCtx().Aws.TaggingClient, p.GetCtx().Aws.CloudControlClient, p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Aws.Config.Region, TagCapiDeploy, p.Ctx.Project.DeploymentName)
 	if err != nil {
 		return lb.Complete(err)
 	}

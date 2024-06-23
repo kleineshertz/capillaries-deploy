@@ -40,10 +40,11 @@ remote cmd elapsed:%0.3f
 }
 
 type SshConfigDef struct {
-	ExternalIpAddress string `json:"external_ip_address"` // Bastion
-	Port              int    `json:"port"`
-	User              string `json:"user"`
-	PrivateKeyPath    string `json:"private_key_path"`
+	BastionExternalIpAddressName string `json:"bastion_external_ip_address_name"` // Bastion
+	Port                         int    `json:"port"`
+	User                         string `json:"user"`
+	PrivateKeyPath               string `json:"private_key_path"`
+	BastionExternalIp            string //`json:"external_ip_address"` // Bastion
 }
 
 type TunneledSshClient struct {
@@ -77,11 +78,11 @@ func NewTunneledSshClient(sshConfig *SshConfigDef, ipAddress string) (*TunneledS
 		return nil, err
 	}
 
-	bastionUrl := fmt.Sprintf("%s:%d", sshConfig.ExternalIpAddress, sshConfig.Port)
+	bastionUrl := fmt.Sprintf("%s:%d", sshConfig.BastionExternalIp, sshConfig.Port)
 
 	tsc := TunneledSshClient{}
 
-	if ipAddress == sshConfig.ExternalIpAddress {
+	if ipAddress == sshConfig.BastionExternalIp {
 		// Go directly to bastion
 		tsc.SshClient, err = ssh.Dial("tcp", bastionUrl, bastionSshClientConfig)
 		if err != nil {
