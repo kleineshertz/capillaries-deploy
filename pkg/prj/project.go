@@ -154,19 +154,20 @@ type InstanceDef struct {
 	Purpose  string `json:"purpose"`
 	InstName string `json:"inst_name"`
 	//SecurityGroupNickname string                `json:"security_group"`
-	SecurityGroupName     string `json:"security_group_name"`
-	RootKeyName           string `json:"root_key_name"`
-	IpAddress             string `json:"ip_address"`
-	ExternalIpAddressName string `json:"external_ip_address_name,omitempty"` // Populated for bastion only
-	FlavorName            string `json:"flavor"`
-	ImageId               string `json:"image_id"`
+	SecurityGroupName         string                `json:"security_group_name"`
+	RootKeyName               string                `json:"root_key_name"`
+	IpAddress                 string                `json:"ip_address"`
+	ExternalIpAddressName     string                `json:"external_ip_address_name,omitempty"` // Populated for bastion only
+	ExternalIpAddress         string                `json:"external_ip_address"`                // Output only, populated for bastion only
+	FlavorName                string                `json:"flavor"`
+	ImageId                   string                `json:"image_id"`
+	SubnetName                string                `json:"subnet_name"`
+	Volumes                   map[string]*VolumeDef `json:"volumes,omitempty"`
+	Service                   ServiceDef            `json:"service"`
+	AssociatedInstanceProfile string                `json:"associated_instance_profile"`
 	//SubnetType            string                `json:"subnet_type"`
-	SubnetName string                `json:"subnet_name"`
-	Volumes    map[string]*VolumeDef `json:"volumes,omitempty"`
 	//Id                    string                `json:"id"`
 	//SnapshotImageId       string                `json:"snapshot_image_id"`
-	Service           ServiceDef `json:"service"`
-	ExternalIpAddress string     // Populated for bastion only
 	//UsesSshConfigExternalIpAddress bool                  `json:"uses_ssh_config_external_ip_address,omitempty"`
 }
 
@@ -246,34 +247,6 @@ type ProjectPair struct {
 // 	prjPair.Template.Network.PrivateSubnet.RouteTableToNat = newId
 // 	prjPair.Live.Network.PrivateSubnet.RouteTableToNat = newId
 // }
-
-func (p *Project) SetSshBastionExternalIp(ipName string, newIp string) {
-	//prjPair.Template.SshConfig.BastionExternalIp = newIp
-	p.SshConfig.BastionExternalIp = newIp
-
-	// for _, iDef := range prjPair.Template.Instances {
-	// 	if iDef.ExternalIpAddressName == ipName {
-	// 		iDef.ExternalIpAddress = newIp
-	// 	}
-	// }
-	for _, iDef := range p.Instances {
-		if iDef.ExternalIpAddressName == ipName {
-			iDef.ExternalIpAddress = newIp
-		}
-
-		// In env variables
-		replaceMap := map[string]string{}
-		for varName, varValue := range iDef.Service.Env {
-			if strings.Contains(varValue, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}") {
-				replaceMap[varName] = strings.ReplaceAll(varValue, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}", newIp)
-			}
-		}
-		for varName, varValue := range replaceMap {
-			iDef.Service.Env[varName] = varValue
-		}
-	}
-
-}
 
 // func (prjPair *ProjectPair) SetPublicSubnetNatGatewayExternalIp(newIp string) {
 // 	prjPair.Template.Network.PublicSubnet.NatGatewayExternalIp = newIp

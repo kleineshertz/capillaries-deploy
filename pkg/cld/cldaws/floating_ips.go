@@ -12,7 +12,7 @@ import (
 
 func GetPublicIpAddressAllocationAssociatedInstanceByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, ipName string) (string, string, string, error) {
 	out, err := client.DescribeAddresses(goCtx, &ec2.DescribeAddressesInput{Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{ipName}}}})
-	lb.AddObject("DescribeAddresses", out)
+	lb.AddObject(fmt.Sprintf("DescribeAddresses(%s)", ipName), out)
 	if err != nil {
 		return "", "", "", fmt.Errorf("cannot get public ip named %s: %s", ipName, err.Error())
 	}

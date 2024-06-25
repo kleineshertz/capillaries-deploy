@@ -338,3 +338,17 @@ func DeleteSnapshot(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 	}
 	return nil
 }
+
+func AssociateInstanceProfile(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, instanceProfileName string) error {
+	out, err := client.AssociateIamInstanceProfile(goCtx, &ec2.AssociateIamInstanceProfileInput{
+		InstanceId:         aws.String(instanceId),
+		IamInstanceProfile: &types.IamInstanceProfileSpecification{Name: aws.String(instanceProfileName)}})
+	lb.AddObject("AssociateInstanceProfile", out)
+	if err != nil {
+		return fmt.Errorf("cannot associate instance profile %s with %s: %s", instanceProfileName, instanceId, err.Error())
+	}
+	if *out.IamInstanceProfileAssociation.InstanceId == "" {
+		return fmt.Errorf("associating instance profile %s with %s returned empty instance id", instanceProfileName, instanceId)
+	}
+	return nil
+}

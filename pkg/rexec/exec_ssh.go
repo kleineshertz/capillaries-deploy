@@ -40,11 +40,11 @@ remote cmd elapsed:%0.3f
 }
 
 type SshConfigDef struct {
-	BastionExternalIpAddressName string `json:"bastion_external_ip_address_name"` // Bastion
+	BastionExternalIpAddressName string `json:"bastion_external_ip_address_name"`
+	BastionExternalIp            string `json:"bastion_external_ip_address"` // Output only
 	Port                         int    `json:"port"`
 	User                         string `json:"user"`
 	PrivateKeyPath               string `json:"private_key_path"`
-	BastionExternalIp            string //`json:"external_ip_address"` // Bastion
 }
 
 type TunneledSshClient struct {

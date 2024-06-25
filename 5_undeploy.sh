@@ -7,8 +7,8 @@ set -x # Print commands
 
 set -e # Exit on failure
 ./capideploy detach_volumes "bastion" -p sample.jsonnet -v >> undeploy.log
-./capideploy delete_volumes "*" -p sample.jsonnet -v >> undeploy.log
 ./capideploy delete_instances "*" -p sample.jsonnet -v >> undeploy.log
+./capideploy delete_volumes "*" -p sample.jsonnet -v >> undeploy.log
 
 ./capideploy delete_security_groups -p sample.jsonnet -v >> undeploy.log
 ./capideploy delete_networking -p sample.jsonnet -v >> undeploy.log

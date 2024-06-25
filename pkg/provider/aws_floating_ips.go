@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
@@ -28,7 +29,8 @@ func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
 	if err != nil {
 		return lb.Complete(err)
 	}
-	p.GetCtx().Project.SetSshBastionExternalIp(bastionIpName, bastionIpAddress)
+
+	p.GetCtx().Project.SshConfig.BastionExternalIp = bastionIpAddress
 
 	// Tell the user about the bastion IP
 	reportPublicIp(p.GetCtx().Project)
@@ -38,7 +40,6 @@ func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
 	if err != nil {
 		return lb.Complete(err)
 	}
-	//p.GetCtx().PrjPair.SetPublicSubnetNatGatewayExternalIp(natgwIp)
 
 	return lb.Complete(nil)
 }
@@ -65,7 +66,6 @@ func (p *AwsDeployProvider) DeleteFloatingIps() (l.LogMsg, error) {
 	if err != nil {
 		return lb.Complete(err)
 	}
-	p.GetCtx().Project.SetSshBastionExternalIp(bastionIpName, "")
 
 	err = releaseFloatingIpIfNotAllocated(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.PublicSubnet.NatGatewayExternalIpName)
 	if err != nil {
@@ -75,6 +75,34 @@ func (p *AwsDeployProvider) DeleteFloatingIps() (l.LogMsg, error) {
 
 	return lb.Complete(nil)
 }
+
+// func (p *Project) SetSshBastionExternalIp(ipName string, newIp string) {
+// 	//prjPair.Template.SshConfig.BastionExternalIp = newIp
+// 	p.SshConfig.BastionExternalIp = newIp
+
+// 	// for _, iDef := range prjPair.Template.Instances {
+// 	// 	if iDef.ExternalIpAddressName == ipName {
+// 	// 		iDef.ExternalIpAddress = newIp
+// 	// 	}
+// 	// }
+// 	for _, iDef := range p.Instances {
+// 		if iDef.ExternalIpAddressName == ipName {
+// 			iDef.ExternalIpAddress = newIp
+// 		}
+
+// 		// In env variables
+// 		replaceMap := map[string]string{}
+// 		for varName, varValue := range iDef.Service.Env {
+// 			if strings.Contains(varValue, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}") {
+// 				replaceMap[varName] = strings.ReplaceAll(varValue, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}", newIp)
+// 			}
+// 		}
+// 		for varName, varValue := range replaceMap {
+// 			iDef.Service.Env[varName] = varValue
+// 		}
+// 	}
+
+// }
 
 func (p *AwsDeployProvider) PopulateInstanceExternalAddressByName() (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
@@ -88,10 +116,24 @@ func (p *AwsDeployProvider) PopulateInstanceExternalAddressByName() (l.LogMsg, e
 		return lb.Complete(fmt.Errorf("ip address %s was not allocated, did you call create_public_ips?", ipAddressName))
 	}
 
-	// This updates the project!
+	// Updates project: ssh config
+	p.GetCtx().Project.SshConfig.BastionExternalIp = ipAddress
+
+	// Updates project: instances
 	for _, iDef := range p.GetCtx().Project.Instances {
 		if iDef.ExternalIpAddressName == ipAddressName {
 			iDef.ExternalIpAddress = ipAddress
+		}
+
+		// In env variables
+		replaceMap := map[string]string{}
+		for varName, varValue := range iDef.Service.Env {
+			if strings.Contains(varValue, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}") {
+				replaceMap[varName] = strings.ReplaceAll(varValue, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}", ipAddress)
+			}
+		}
+		for varName, varValue := range replaceMap {
+			iDef.Service.Env[varName] = varValue
 		}
 	}
 

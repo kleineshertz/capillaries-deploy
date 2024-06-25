@@ -188,10 +188,27 @@ func GetNatGatewayIdAndStateByName(client *ec2.Client, goCtx context.Context, lb
 	if err != nil {
 		return "", types.NatGatewayStateDeleted, fmt.Errorf("cannot describe natgw %s: %s", natGatewayName, err.Error())
 	}
-	if len(out.NatGateways) > 0 {
-		return *out.NatGateways[0].NatGatewayId, out.NatGateways[0].State, nil
+	if len(out.NatGateways) == 0 {
+		return "", types.NatGatewayStateDeleted, nil
 	}
-	return "", types.NatGatewayStateDeleted, nil
+
+	var natGatewayId string
+	stateName := types.NatGatewayStateFailed
+	for resIdx := 0; resIdx < len(out.NatGateways); resIdx++ {
+		if out.NatGateways[resIdx].State == types.NatGatewayStateAvailable {
+			return *out.NatGateways[resIdx].NatGatewayId, out.NatGateways[resIdx].State, nil
+		}
+
+		if out.NatGateways[resIdx].State == types.NatGatewayStatePending {
+			natGatewayId = *out.NatGateways[resIdx].NatGatewayId
+			stateName = out.NatGateways[resIdx].State
+		} else if stateName != types.NatGatewayStatePending {
+			natGatewayId = *out.NatGateways[resIdx].NatGatewayId
+			stateName = out.NatGateways[resIdx].State
+		}
+	}
+
+	return natGatewayId, stateName, nil
 }
 
 func CreateNatGateway(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, natGatewayName string, subnetId string, publicIpAllocationId string, timeoutSeconds int) (string, error) {

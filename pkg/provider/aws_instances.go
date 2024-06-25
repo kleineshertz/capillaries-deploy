@@ -106,10 +106,12 @@ func internalCreate(p *AwsDeployProvider, lb *l.LogBuilder, iNickname string, in
 	}
 
 	if instanceId != "" {
-		if foundInstanceStateByName != types.InstanceStateNameRunning && foundInstanceStateByName != types.InstanceStateNamePending {
+		if foundInstanceStateByName == types.InstanceStateNameRunning || foundInstanceStateByName == types.InstanceStateNamePending {
+			// Assuming it's the right instance, return ok
+			return nil
+		} else if foundInstanceStateByName != types.InstanceStateNameTerminated {
 			return fmt.Errorf("instance %s(%s) already there and has invalid state %s", instName, instanceId, foundInstanceStateByName)
 		}
-		return nil
 	}
 
 	instanceId, err = cldaws.CreateInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
@@ -128,6 +130,13 @@ func internalCreate(p *AwsDeployProvider, lb *l.LogBuilder, iNickname string, in
 
 	if externalIpAddress != "" {
 		_, err = cldaws.AssignAwsFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, instanceId, externalIpAddress)
+		if err != nil {
+			return err
+		}
+	}
+
+	if p.GetCtx().Project.Instances[iNickname].AssociatedInstanceProfile != "" {
+		err = cldaws.AssociateInstanceProfile(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, instanceId, p.GetCtx().Project.Instances[iNickname].AssociatedInstanceProfile)
 		if err != nil {
 			return err
 		}
@@ -205,11 +214,12 @@ func (p *AwsDeployProvider) DeleteInstance(iNickname string, ignoreAttachedVolum
 		return lb.Complete(err)
 	}
 
-	if foundId != "" {
-		if foundState == types.InstanceStateNameTerminated {
-			lb.Add(fmt.Sprintf("will not delete instance %s, already terminated", iNickname))
-			return lb.Complete(nil)
-		}
+	if foundId != "" && foundState == types.InstanceStateNameTerminated {
+		lb.Add(fmt.Sprintf("will not delete instance %s, already terminated", iNickname))
+		return lb.Complete(nil)
+	} else if foundId == "" {
+		lb.Add(fmt.Sprintf("will not delete instance %s, instance not found", iNickname))
+		return lb.Complete(nil)
 	}
 
 	return lb.Complete(cldaws.DeleteInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundId, p.GetCtx().Project.Timeouts.DeleteInstance))

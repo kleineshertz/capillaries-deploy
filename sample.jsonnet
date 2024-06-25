@@ -10,7 +10,7 @@
   // 3. Flavor family
   // 4. Number of cores in Cassandra nodes. Daemon cores are 4 times less.
   // Check out instance_flavor below for full list of available setups or add your own
-  local deployment_flavor_power = provider_name + '.arm64.c7g.64',
+  local deployment_flavor_power = provider_name + '.arm64.c7g.16',
 
    // Cassandra cluster size - 4,8,16
   local cassandra_total_nodes = 4,
@@ -73,7 +73,7 @@
     'aws.amd64.c6a.64': {cassandra:'c6ad.16xlarge', cass_nvme_regex:'unknown-nvme-regex',     daemon: 'c6a.4xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.arm64.c7g.16': {cassandra:'c7gd.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 884.8G', daemon: 'c7g.xlarge',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
     'aws.arm64.c7g.32': {cassandra:'c7gd.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',   daemon: 'c7g.2xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
-    'aws.arm64.c7g.64': {cassandra:'c7gd.16xlarge', cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',   daemon: 'c6a.4xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'}
+    'aws.arm64.c7g.64': {cassandra:'c7gd.16xlarge', cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',   daemon: 'c7g.4xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'}
   }, deployment_flavor_power),
 
   // Volumes
@@ -96,27 +96,6 @@
   deployment_name: dep_name,
   deploy_provider_name: provider_name,
 
-  // Full list of env variables expected by capideploy working with this project
-  // env_variables_used: [
-  //   // Used in this config
-  //   'CAPIDEPLOY_SSH_USER',
-  //   'CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME',
-  //   'CAPIDEPLOY_SSH_PRIVATE_KEY_PATH',
-
-  //   'CAPIDEPLOY_BASTION_ALLOWED_IPS',
-  //   'CAPIDEPLOY_EXTERNAL_WEBAPI_PORT',
-
-  //   'CAPIDEPLOY_CAPILLARIES_RELEASE_URL',
-
-  //   'CAPIDEPLOY_RABBITMQ_ADMIN_NAME',
-  //   'CAPIDEPLOY_RABBITMQ_ADMIN_PASS',
-  //   'CAPIDEPLOY_RABBITMQ_USER_NAME',
-  //   'CAPIDEPLOY_RABBITMQ_USER_PASS',
-
-  //   'CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID',
-  //   'CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY',
-  //   'CAPIDEPLOY_IAM_AWS_DEFAULT_REGION',
-  // ],
   ssh_config: {
     bastion_external_ip_address_name: dep_name +  '_bastion_external_ip_name',
     // external_ip_address: '',
@@ -301,6 +280,7 @@
       image_id: instance_image_id,
       security_group_name: $.security_groups.bastion.name,
       subnet_name: $.network.public_subnet.name,
+      associated_instance_profile: '{CAPIDEPLOY_INSTANCE_PROFILE_WITH_S3_ACCESS}',
       volumes: {
         'log': {
           name: dep_name + '_log',
@@ -316,9 +296,9 @@
         env: {
           CAPILLARIES_RELEASE_URL: '{CAPIDEPLOY_CAPILLARIES_RELEASE_URL}',
           OS_ARCH: os_arch,
-          IAM_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID}',
-          IAM_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY}',
-          IAM_AWS_DEFAULT_REGION: '{CAPIDEPLOY_IAM_AWS_DEFAULT_REGION}',
+          S3_IAM_USER_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_S3_IAM_USER_AWS_ACCESS_KEY_ID}',
+          S3_IAM_USER_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_S3_IAM_USER_AWS_SECRET_ACCESS_KEY}',
+          S3_AWS_DEFAULT_REGION: '{CAPIDEPLOY_S3_AWS_DEFAULT_REGION}',
           AMQP_URL: 'amqp://{CAPIDEPLOY_RABBITMQ_USER_NAME}:{CAPIDEPLOY_RABBITMQ_USER_PASS}@' + rabbitmq_ip + '/',
           CASSANDRA_HOSTS: cassandra_hosts,
           PROMETHEUS_IP: prometheus_ip,
@@ -510,14 +490,15 @@
       image_id: instance_image_id,
       security_group_name: $.security_groups.internal.name,
       subnet_name: $.network.private_subnet.name,
+      associated_instance_profile: '{CAPIDEPLOY_INSTANCE_PROFILE_WITH_S3_ACCESS}',
       service: {
         env: {
           INTERNAL_BASTION_IP: internal_bastion_ip,
           CAPILLARIES_RELEASE_URL: '{CAPIDEPLOY_CAPILLARIES_RELEASE_URL}',
           OS_ARCH: os_arch,
-          IAM_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_IAM_AWS_ACCESS_KEY_ID}',
-          IAM_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_IAM_AWS_SECRET_ACCESS_KEY}',
-          IAM_AWS_DEFAULT_REGION: '{CAPIDEPLOY_IAM_AWS_DEFAULT_REGION}',
+          S3_IAM_USER_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_S3_IAM_USER_AWS_ACCESS_KEY_ID}',
+          S3_IAM_USER_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_S3_IAM_USER_AWS_SECRET_ACCESS_KEY}',
+          S3_AWS_DEFAULT_REGION: '{CAPIDEPLOY_S3_AWS_DEFAULT_REGION}',
           AMQP_URL: 'amqp://{CAPIDEPLOY_RABBITMQ_USER_NAME}:{CAPIDEPLOY_RABBITMQ_USER_PASS}@' + rabbitmq_ip + '/',
           CASSANDRA_HOSTS: cassandra_hosts,
           DAEMON_THREAD_POOL_SIZE: DEFAULT_DAEMON_THREAD_POOL_SIZE,
