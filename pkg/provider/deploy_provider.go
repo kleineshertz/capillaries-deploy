@@ -7,7 +7,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/cloudcontrol"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
@@ -16,10 +15,9 @@ import (
 )
 
 type AwsCtx struct {
-	Config             aws.Config
-	Ec2Client          *ec2.Client
-	TaggingClient      *resourcegroupstaggingapi.Client
-	CloudControlClient *cloudcontrol.Client
+	Config        aws.Config
+	Ec2Client     *ec2.Client
+	TaggingClient *resourcegroupstaggingapi.Client
 }
 
 const TagCapiDeploy string = "CapiDeploy"
@@ -78,9 +76,8 @@ func DeployProviderFactory(project *prj.Project, goCtx context.Context, isVerbos
 				IsVerbose: isVerbose,
 				Tags:      map[string]string{TagCapiDeploy: project.DeploymentName},
 				Aws: &AwsCtx{
-					Ec2Client:          ec2.NewFromConfig(cfg),
-					TaggingClient:      resourcegroupstaggingapi.NewFromConfig(cfg),
-					CloudControlClient: cloudcontrol.NewFromConfig(cfg),
+					Ec2Client:     ec2.NewFromConfig(cfg),
+					TaggingClient: resourcegroupstaggingapi.NewFromConfig(cfg),
 				},
 			},
 		}, nil
@@ -111,7 +108,7 @@ export BASTION_IP=%s
 
 func (p *AwsDeployProvider) ListDeploymentResources() (l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
-	resources, err := cldaws.GetResourcesByTag(p.GetCtx().Aws.TaggingClient, p.GetCtx().Aws.CloudControlClient, p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Aws.Config.Region, TagCapiDeploy, p.Ctx.Project.DeploymentName)
+	resources, err := cldaws.GetResourcesByTag(p.GetCtx().Aws.TaggingClient, p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Aws.Config.Region, TagCapiDeploy, p.Ctx.Project.DeploymentName)
 	if err != nil {
 		return lb.Complete(err)
 	}

@@ -49,15 +49,23 @@ set -x
 ./capideploy create_security_groups -p sample.jsonnet -v >> deploy.log
 ./capideploy create_volumes "*" -p sample.jsonnet -v >> deploy.log
 ./capideploy create_instances "*" -p sample.jsonnet -v >> deploy.log
-./capideploy ping_instances '*' -p sample.jsonnet -n 20
+#./capideploy create_instances "bastion" -p sample.jsonnet -v >> deploy.log
+./capideploy ping_instances '*' -p sample.jsonnet -n 20 >> deploy.log
+#./capideploy ping_instances "bastion" -p sample.jsonnet -n 20 >> deploy.log
 ./capideploy attach_volumes "bastion" -p sample.jsonnet -v >> deploy.log
-./capideploy install_services "*" -p sample.jsonnet -v >> deploy.log
+
+# install_services swaps sshd services, so do not use bastion as jumphost while it's in transition
+./capideploy install_services "bastion" -p sample.jsonnet -v >> deploy.log
+./capideploy install_services "rabbitmq,prometheus,daemon*,cass*" -p sample.jsonnet -v >> deploy.log
 
 # Cassandra requires special treatment: stop and config/start
 ./capideploy stop_services "cass*" -p sample.jsonnet -v >> deploy.log
 ./capideploy config_services "cass*" -p sample.jsonnet -v >> deploy.log
 
 ./capideploy config_services "bastion,rabbitmq,prometheus,daemon*" -p sample.jsonnet -v >> deploy.log
+#./capideploy config_services "bastion" -p sample.jsonnet -v >> deploy.log
+
+exit 0
 
 ssh -o StrictHostKeyChecking=no -i $CAPIDEPLOY_SSH_PRIVATE_KEY_PATH -J $BASTION_IP $CAPIDEPLOY_SSH_USER@10.5.0.11 'nodetool describecluster;nodetool status'
 

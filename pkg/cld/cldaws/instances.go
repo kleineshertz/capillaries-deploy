@@ -21,14 +21,10 @@ func stringToInstanceType(instanceTypeString string) (types.InstanceType, error)
 	return types.InstanceTypeT2Nano, fmt.Errorf("unknown instance type %s", instanceTypeString)
 }
 
-func GetInstanceType(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, flavorName string) (string, error) {
-	if flavorName == "" {
-		return "", fmt.Errorf("empty parameter not allowed: flavorName (%s)", flavorName)
-	}
-	out, err := client.DescribeInstanceTypes(goCtx, &ec2.DescribeInstanceTypesInput{
+func GetInstanceType(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, flavorName string) (string, error) {
+	out, err := ec2Client.DescribeInstanceTypes(goCtx, &ec2.DescribeInstanceTypesInput{
 		InstanceTypes: []types.InstanceType{types.InstanceType(flavorName)}})
-	//Filters: []types.Filter{{Name: aws.String("instance-type"), Values: []string{aws.String(flavorName)}}}})
-	lb.AddObject("DescribeInstanceTypes", out)
+	lb.AddObject(fmt.Sprintf("DescribeInstanceTypes(InstanceType=%s)", flavorName), out)
 	if err != nil {
 		return "", fmt.Errorf("cannot find flavor %s:%s", flavorName, err.Error())
 	}
@@ -38,13 +34,10 @@ func GetInstanceType(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder
 	return string(out.InstanceTypes[0].InstanceType), nil // "t2.2xlarge"
 }
 
-func GetImageInfoById(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) (types.ImageState, []types.BlockDeviceMapping, error) {
-	if imageId == "" {
-		return "", nil, fmt.Errorf("empty parameter not allowed: imageId (%s)", imageId)
-	}
-	out, err := client.DescribeImages(goCtx, &ec2.DescribeImagesInput{Filters: []types.Filter{{
+func GetImageInfoById(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) (types.ImageState, []types.BlockDeviceMapping, error) {
+	out, err := ec2Client.DescribeImages(goCtx, &ec2.DescribeImagesInput{Filters: []types.Filter{{
 		Name: aws.String("image-id"), Values: []string{imageId}}}})
-	lb.AddObject("DescribeImages", out)
+	lb.AddObject(fmt.Sprintf("DescribeImages(image-id=%s)", imageId), out)
 	if err != nil {
 		return "", nil, fmt.Errorf("cannot find image %s:%s", imageId, err.Error())
 	}
@@ -54,26 +47,23 @@ func GetImageInfoById(client *ec2.Client, goCtx context.Context, lb *l.LogBuilde
 	return out.Images[0].State, out.Images[0].BlockDeviceMappings, nil
 }
 
-func GetImageInfoByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageName string) (string, types.ImageState, []types.BlockDeviceMapping, error) {
-	out, err := client.DescribeImages(goCtx, &ec2.DescribeImagesInput{Filters: []types.Filter{{
+func GetImageInfoByName(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageName string) (string, types.ImageState, []types.BlockDeviceMapping, error) {
+	out, err := ec2Client.DescribeImages(goCtx, &ec2.DescribeImagesInput{Filters: []types.Filter{{
 		Name: aws.String("tag:Name"), Values: []string{imageName}}}})
-	lb.AddObject("DescribeImages", out)
+	lb.AddObject(fmt.Sprintf("DescribeImages(tag:Name=%s)", imageName), out)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("cannot find image %s:%s", imageName, err.Error())
 	}
 	if len(out.Images) == 0 {
-		return "", "", nil, fmt.Errorf("found zero results for image %s", imageName)
+		return "", "", nil, nil
 	}
 	return *out.Images[0].ImageId, out.Images[0].State, out.Images[0].BlockDeviceMappings, nil
 }
 
-func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, keypairName string) error {
-	if keypairName == "" {
-		return fmt.Errorf("empty parameter not allowed: keypairName (%s)", keypairName)
-	}
-	out, err := client.DescribeKeyPairs(goCtx, &ec2.DescribeKeyPairsInput{Filters: []types.Filter{{
+func VerifyKeypair(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, keypairName string) error {
+	out, err := ec2Client.DescribeKeyPairs(goCtx, &ec2.DescribeKeyPairsInput{Filters: []types.Filter{{
 		Name: aws.String("key-name"), Values: []string{keypairName}}}})
-	lb.AddObject("DescribeKeyPairs", out)
+	lb.AddObject(fmt.Sprintf("DescribeKeyPairs(key-name=%s)", keypairName), out)
 	if err != nil {
 		return fmt.Errorf("cannot find keypair %s:%s", keypairName, err.Error())
 	}
@@ -83,12 +73,9 @@ func VerifyKeypair(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, 
 	return nil
 }
 
-func GetInstanceIdAndStateByHostName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instName string) (string, types.InstanceStateName, error) {
-	if instName == "" {
-		return "", types.InstanceStateNameTerminated, fmt.Errorf("empty parameter not allowed: instName (%s)", instName)
-	}
-	out, err := client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{instName}}}})
-	lb.AddObject("DescribeInstances", out)
+func GetInstanceIdAndStateByHostName(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instName string) (string, types.InstanceStateName, error) {
+	out, err := ec2Client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{instName}}}})
+	lb.AddObject(fmt.Sprintf("DescribeInstances(tag:Name=%s)", instName), out)
 	if err != nil {
 		return "", types.InstanceStateNameTerminated, fmt.Errorf("cannot find instance by name %s:%s", instName, err.Error())
 	}
@@ -120,12 +107,9 @@ func GetInstanceIdAndStateByHostName(client *ec2.Client, goCtx context.Context, 
 	return instanceId, types.InstanceStateName(instanceStateName), nil
 }
 
-func getInstanceStateName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string) (types.InstanceStateName, error) {
-	if instanceId == "" {
-		return "", fmt.Errorf("empty parameter not allowed: instanceId (%s)", instanceId)
-	}
-	out, err := client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{InstanceIds: []string{instanceId}})
-	lb.AddObject("DescribeInstances", out)
+func getInstanceStateName(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string) (types.InstanceStateName, error) {
+	out, err := ec2Client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{InstanceIds: []string{instanceId}})
+	lb.AddObject(fmt.Sprintf("DescribeInstances(instanceId=%s)", instanceId), out)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
 			return "", nil
@@ -150,7 +134,7 @@ func getInstanceStateName(client *ec2.Client, goCtx context.Context, lb *l.LogBu
 	return "", nil
 }
 
-func CreateInstance(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder,
+func CreateInstance(ec2Client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder,
 	instanceTypeString string,
 	imageId string,
 	instName string,
@@ -172,7 +156,7 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, tags map[string]s
 	}
 
 	// NOTE: AWS doesn't allow to specify hostname on creation, it assigns names like "ip-10-5-0-11"
-	runOut, err := client.RunInstances(goCtx, &ec2.RunInstancesInput{
+	runOut, err := ec2Client.RunInstances(goCtx, &ec2.RunInstancesInput{
 		InstanceType:        instanceType,
 		ImageId:             aws.String(imageId),
 		MinCount:            aws.Int32(1),
@@ -185,7 +169,7 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, tags map[string]s
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeInstance,
 			Tags:         mapToTags(instName, tags)}}})
-	lb.AddObject("RunInstances", runOut)
+	lb.AddObject(fmt.Sprintf("RunInstances(InstanceType=%s,ImageId=%s,tag:Name=%s)", instanceType, imageId, instName), runOut)
 	if err != nil {
 		return "", fmt.Errorf("cannot create instance %s: %s", instName, err.Error())
 	}
@@ -201,7 +185,7 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, tags map[string]s
 
 	startWaitTs := time.Now()
 	for {
-		stateName, err := getInstanceStateName(client, goCtx, lb, newId)
+		stateName, err := getInstanceStateName(ec2Client, goCtx, lb, newId)
 		if err != nil {
 			return "", err
 		}
@@ -222,29 +206,23 @@ func CreateInstance(client *ec2.Client, goCtx context.Context, tags map[string]s
 	return newId, nil
 }
 
-func AssignAwsFloatingIp(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, floatingIp string) (string, error) {
-	if instanceId == "" || floatingIp == "" {
-		return "", fmt.Errorf("empty parameter not allowed: instanceId (%s), floatingIp (%s)", instanceId, floatingIp)
-	}
-	out, err := client.AssociateAddress(goCtx, &ec2.AssociateAddressInput{
+func AssignAwsFloatingIp(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, ipAddress string) (string, error) {
+	out, err := ec2Client.AssociateAddress(goCtx, &ec2.AssociateAddressInput{
 		InstanceId: aws.String(instanceId),
-		PublicIp:   aws.String(floatingIp)})
-	lb.AddObject("AssociateAddress", out)
+		PublicIp:   aws.String(ipAddress)})
+	lb.AddObject(fmt.Sprintf("AssociateAddress(instanceId=%s,ipAddress=%s)", instanceId, ipAddress), out)
 	if err != nil {
-		return "", fmt.Errorf("cannot assign public IP %s to %s: %s", floatingIp, instanceId, err.Error())
+		return "", fmt.Errorf("cannot assign public IP %s to %s: %s", ipAddress, instanceId, err.Error())
 	}
 	if *out.AssociationId == "" {
-		return "", fmt.Errorf("assigning public IP %s to %s returned empty association id", floatingIp, instanceId)
+		return "", fmt.Errorf("assigning public IP %s to %s returned empty association id", ipAddress, instanceId)
 	}
 	return *out.AssociationId, nil
 }
 
-func DeleteInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, timeoutSeconds int) error {
-	if instanceId == "" {
-		return fmt.Errorf("empty parameter not allowed: instanceId (%s)", instanceId)
-	}
-	out, err := client.TerminateInstances(goCtx, &ec2.TerminateInstancesInput{InstanceIds: []string{instanceId}})
-	lb.AddObject("TerminateInstances", out)
+func DeleteInstance(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, timeoutSeconds int) error {
+	out, err := ec2Client.TerminateInstances(goCtx, &ec2.TerminateInstancesInput{InstanceIds: []string{instanceId}})
+	lb.AddObject(fmt.Sprintf("TerminateInstances(instanceId=%s)", instanceId), out)
 	if err != nil {
 		return fmt.Errorf("cannot delete instance %s: %s", instanceId, err.Error())
 	}
@@ -254,7 +232,7 @@ func DeleteInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 
 	startWaitTs := time.Now()
 	for {
-		stateName, err := getInstanceStateName(client, goCtx, lb, instanceId)
+		stateName, err := getInstanceStateName(ec2Client, goCtx, lb, instanceId)
 		if err != nil {
 			return err
 		}
@@ -277,18 +255,43 @@ func DeleteInstance(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder,
 	return nil
 }
 
-// aws ec2 create-image --region "us-east-1" --instance-id i-03c10fd5566a08476 --name ami-i-03c10fd5566a08476 --no-reboot
-func CreateImageFromInstance(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, imageName string, instanceId string, timeoutSeconds int) (string, error) {
-	if imageName == "" || instanceId == "" {
-		return "", fmt.Errorf("empty parameter not allowed: imageName (%s), instanceId (%s)", imageName, instanceId)
+func StopInstance(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, timeoutSeconds int) error {
+	out, err := ec2Client.StopInstances(goCtx, &ec2.StopInstancesInput{InstanceIds: []string{instanceId}})
+	lb.AddObject(fmt.Sprintf("StopInstances(instanceId=%s)", instanceId), out)
+	if err != nil {
+		return fmt.Errorf("cannot dtop instance %s: %s", instanceId, err.Error())
 	}
-	out, err := client.CreateImage(goCtx, &ec2.CreateImageInput{
+
+	startWaitTs := time.Now()
+	for {
+		stateName, err := getInstanceStateName(ec2Client, goCtx, lb, instanceId)
+		if err != nil {
+			return err
+		}
+
+		if stateName == types.InstanceStateNameStopped {
+			break
+		}
+		if stateName != types.InstanceStateNameStopping {
+			return fmt.Errorf("cannot stop instance %s, uknown state: %s", instanceId, stateName)
+		}
+		if time.Since(startWaitTs).Seconds() > float64(timeoutSeconds) {
+			return fmt.Errorf("giving up after waiting for instance %s to be stop", instanceId)
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return nil
+}
+
+// aws ec2 create-image --region "us-east-1" --instance-id i-03c10fd5566a08476 --name ami-i-03c10fd5566a08476 --no-reboot
+func CreateImageFromInstance(ec2Client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, imageName string, instanceId string, timeoutSeconds int) (string, error) {
+	out, err := ec2Client.CreateImage(goCtx, &ec2.CreateImageInput{
 		InstanceId: aws.String(instanceId),
 		Name:       aws.String(imageName),
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeImage,
 			Tags:         mapToTags(imageName, tags)}}})
-	lb.AddObject("CreateImage", out)
+	lb.AddObject(fmt.Sprintf("CreateImage(imageName=%s,instanceId=%s)", imageName, instanceId), out)
 	if err != nil {
 		return "", fmt.Errorf("cannot create snapshot image %s from instance %s: %s", imageName, instanceId, err.Error())
 	}
@@ -297,7 +300,7 @@ func CreateImageFromInstance(client *ec2.Client, goCtx context.Context, tags map
 
 	startWaitTs := time.Now()
 	for {
-		state, _, err := GetImageInfoById(client, goCtx, lb, imageId)
+		state, _, err := GetImageInfoById(ec2Client, goCtx, lb, imageId)
 		if err != nil {
 			return "", err
 		}
@@ -315,35 +318,35 @@ func CreateImageFromInstance(client *ec2.Client, goCtx context.Context, tags map
 	return imageId, nil
 }
 
-func DeregisterImage(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) error {
-	if imageId == "" {
-		return fmt.Errorf("empty parameter not allowed: imageId (%s)", imageId)
-	}
-	out, err := client.DeregisterImage(goCtx, &ec2.DeregisterImageInput{ImageId: aws.String(imageId)})
-	lb.AddObject("DeregisterImage", out)
+func DeregisterImage(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, imageId string) error {
+	out, err := ec2Client.DeregisterImage(goCtx, &ec2.DeregisterImageInput{ImageId: aws.String(imageId)})
+	lb.AddObject(fmt.Sprintf("DeregisterImage(imageId=%s)", imageId), out)
 	if err != nil {
 		return fmt.Errorf("cannot delete image %s:%s", imageId, err.Error())
 	}
 	return nil
 }
 
-func DeleteSnapshot(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volSnapshotId string) error {
-	if volSnapshotId == "" {
-		return fmt.Errorf("empty parameter not allowed: volSnapshotId (%s)", volSnapshotId)
-	}
-	out, err := client.DeleteSnapshot(goCtx, &ec2.DeleteSnapshotInput{SnapshotId: aws.String(volSnapshotId)})
-	lb.AddObject("DeleteSnapshot", out)
+func DeleteSnapshot(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volSnapshotId string) error {
+	out, err := ec2Client.DeleteSnapshot(goCtx, &ec2.DeleteSnapshotInput{SnapshotId: aws.String(volSnapshotId)})
+	lb.AddObject(fmt.Sprintf("DeleteSnapshot(volSnapshotId=%s)", volSnapshotId), out)
 	if err != nil {
 		return fmt.Errorf("cannot delete snapshot %s:%s", volSnapshotId, err.Error())
 	}
 	return nil
 }
 
-func AssociateInstanceProfile(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, instanceProfileName string) error {
-	out, err := client.AssociateIamInstanceProfile(goCtx, &ec2.AssociateIamInstanceProfileInput{
+func AssociateInstanceProfile(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, instanceId string, instanceProfileName string) error {
+	iamInstanceProfileSpec := types.IamInstanceProfileSpecification{}
+	if strings.HasPrefix(instanceProfileName, "arn:aws:iam") {
+		iamInstanceProfileSpec.Arn = aws.String(instanceProfileName)
+	} else {
+		iamInstanceProfileSpec.Name = aws.String(instanceProfileName)
+	}
+	out, err := ec2Client.AssociateIamInstanceProfile(goCtx, &ec2.AssociateIamInstanceProfileInput{
 		InstanceId:         aws.String(instanceId),
-		IamInstanceProfile: &types.IamInstanceProfileSpecification{Name: aws.String(instanceProfileName)}})
-	lb.AddObject("AssociateInstanceProfile", out)
+		IamInstanceProfile: &iamInstanceProfileSpec})
+	lb.AddObject(fmt.Sprintf("AssociateInstanceProfile(instanceId=%s,instanceProfileName=%s)", instanceId, instanceProfileName), out)
 	if err != nil {
 		return fmt.Errorf("cannot associate instance profile %s with %s: %s", instanceProfileName, instanceId, err.Error())
 	}

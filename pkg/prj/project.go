@@ -31,6 +31,7 @@ type ExecTimeouts struct {
 	AttachVolume     int `json:"attach_volume"`
 	DetachVolume     int `json:"detach_volume"`
 	CreateImage      int `json:"create_image"`
+	StopInstance     int `json:"stop_instance"`
 }
 
 func (t *ExecTimeouts) InitDefaults() {
@@ -57,6 +58,9 @@ func (t *ExecTimeouts) InitDefaults() {
 	}
 	if t.CreateImage == 0 {
 		t.CreateImage = 600
+	}
+	if t.StopInstance == 0 {
+		t.StopInstance = 300
 	}
 }
 

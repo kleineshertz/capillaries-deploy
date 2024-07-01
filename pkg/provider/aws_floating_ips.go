@@ -10,15 +10,15 @@ import (
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 )
 
-func ensureFloatingIp(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, ipName string) (string, error) {
-	existingIp, _, _, err := cldaws.GetPublicIpAddressAllocationAssociatedInstanceByName(client, goCtx, lb, ipName)
+func ensureFloatingIp(ec2Client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, ipName string) (string, error) {
+	existingIp, _, _, err := cldaws.GetPublicIpAddressAllocationAssociatedInstanceByName(ec2Client, goCtx, lb, ipName)
 	if err != nil {
 		return "", err
 	}
 	if existingIp != "" {
 		return existingIp, nil
 	}
-	return cldaws.AllocateFloatingIpByName(client, goCtx, tags, lb, ipName)
+	return cldaws.AllocateFloatingIpByName(ec2Client, goCtx, tags, lb, ipName)
 }
 
 func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
@@ -44,8 +44,8 @@ func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
 	return lb.Complete(nil)
 }
 
-func releaseFloatingIpIfNotAllocated(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, ipName string) error {
-	existingIp, existingIpAllocationId, existingIpAssociatedInstance, err := cldaws.GetPublicIpAddressAllocationAssociatedInstanceByName(client, goCtx, lb, ipName)
+func releaseFloatingIpIfNotAllocated(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, ipName string) error {
+	existingIp, existingIpAllocationId, existingIpAssociatedInstance, err := cldaws.GetPublicIpAddressAllocationAssociatedInstanceByName(ec2Client, goCtx, lb, ipName)
 	if err != nil {
 		return err
 	}
@@ -55,7 +55,7 @@ func releaseFloatingIpIfNotAllocated(client *ec2.Client, goCtx context.Context, 
 	if existingIpAssociatedInstance != "" {
 		return fmt.Errorf("cannot release ip named %s, it is associated with instance %s", ipName, existingIpAssociatedInstance)
 	}
-	return cldaws.ReleaseFloatingIpByAllocationId(client, goCtx, lb, existingIpAllocationId)
+	return cldaws.ReleaseFloatingIpByAllocationId(ec2Client, goCtx, lb, existingIpAllocationId)
 }
 
 func (p *AwsDeployProvider) DeleteFloatingIps() (l.LogMsg, error) {

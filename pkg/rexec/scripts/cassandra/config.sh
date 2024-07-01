@@ -113,7 +113,7 @@ mount_device(){
     fi
     if [ "$(lsblk -f | grep $mount_dir)" == "" ]; then
       echo Mounting...
-	  sudo mount /dev/$device_name $mount_dir
+	    sudo mount /dev/$device_name $mount_dir
     else
       echo Already mounted
     fi

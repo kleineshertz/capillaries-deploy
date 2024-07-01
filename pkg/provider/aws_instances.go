@@ -161,8 +161,8 @@ func (p *AwsDeployProvider) CreateInstanceAndWaitForCompletion(iNickname string,
 	return lb.Complete(internalCreate(p, lb, iNickname, flavorId, imageId, nil, subnetId, sgId))
 }
 
-func getAttachedVolumeDeviceByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volName string) (string, error) {
-	foundVolIdByName, err := cldaws.GetVolumeIdByName(client, goCtx, lb, volName)
+func getAttachedVolumeDeviceByName(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volName string) (string, error) {
+	foundVolIdByName, err := cldaws.GetVolumeIdByName(ec2Client, goCtx, lb, volName)
 	if err != nil {
 		return "", err
 	}
@@ -171,7 +171,7 @@ func getAttachedVolumeDeviceByName(client *ec2.Client, goCtx context.Context, lb
 		return "", fmt.Errorf("volume %s not found, cannot check if it has device name for it; have you removed the volume before detaching it?", volName)
 	}
 
-	foundDevice, _, err := cldaws.GetVolumeAttachedDeviceById(client, goCtx, lb, foundVolIdByName)
+	foundDevice, _, err := cldaws.GetVolumeAttachedDeviceById(ec2Client, goCtx, lb, foundVolIdByName)
 	if err != nil {
 		return "", err
 	}
@@ -179,10 +179,10 @@ func getAttachedVolumeDeviceByName(client *ec2.Client, goCtx context.Context, lb
 	return foundDevice, nil
 }
 
-func getAttachedVolumes(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volumeDefMap map[string]*prj.VolumeDef) ([]string, error) {
+func getAttachedVolumes(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volumeDefMap map[string]*prj.VolumeDef) ([]string, error) {
 	attachedVols := make([]string, 0)
 	for volNickname, volDef := range volumeDefMap {
-		volDevice, err := getAttachedVolumeDeviceByName(client, goCtx, lb, volDef.Name)
+		volDevice, err := getAttachedVolumeDeviceByName(ec2Client, goCtx, lb, volDef.Name)
 		if err != nil {
 			return []string{}, err
 		}
@@ -235,7 +235,7 @@ func (p *AwsDeployProvider) CreateSnapshotImage(iNickname string) (l.LogMsg, err
 		return lb.Complete(err)
 	}
 
-	if foundImageId != "" || foundImageState != types.ImageStateDeregistered {
+	if foundImageId != "" || (foundImageState != "" && foundImageState != types.ImageStateDeregistered) {
 		return lb.Complete(fmt.Errorf("cannot create snaphost image %s, delete/deregister existing image %s first", imageName, foundImageId))
 	}
 
@@ -257,8 +257,16 @@ func (p *AwsDeployProvider) CreateSnapshotImage(iNickname string) (l.LogMsg, err
 		return lb.Complete(fmt.Errorf("cannot create snapshot image from instance %s, instance not found", iNickname))
 	}
 
-	if foundInstanceState != types.InstanceStateNameRunning {
+	if foundInstanceState != types.InstanceStateNameRunning &&
+		foundInstanceState != types.InstanceStateNameStopped {
 		return lb.Complete(fmt.Errorf("cannot create snapshot image from instance %s, instance state is %s, expected running", iNickname, foundInstanceState))
+	}
+
+	if foundInstanceState != types.InstanceStateNameStopped {
+		err = cldaws.StopInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundInstanceId, p.GetCtx().Project.Timeouts.StopInstance)
+		if err != nil {
+			return lb.Complete(err)
+		}
 	}
 
 	imageId, err := cldaws.CreateImageFromInstance(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
@@ -344,7 +352,7 @@ func (p *AwsDeployProvider) DeleteSnapshotImage(iNickname string) (l.LogMsg, err
 	}
 
 	if foundImageId == "" {
-		return lb.Complete(fmt.Errorf("cannot delete snapshot image %s for that is not found", imageName, iNickname))
+		return lb.Complete(fmt.Errorf("cannot delete snapshot image %s for %s that is not found", imageName, iNickname))
 	}
 
 	if foundImageState == types.ImageStateDeregistered {

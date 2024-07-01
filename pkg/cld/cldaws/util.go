@@ -10,11 +10,11 @@ import (
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 )
 
-func TagResource(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, resourceId string, tagName string, tagMap map[string]string) error {
-	out, err := client.CreateTags(goCtx, &ec2.CreateTagsInput{
+func TagResource(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, resourceId string, tagName string, tagMap map[string]string) error {
+	out, err := ec2Client.CreateTags(goCtx, &ec2.CreateTagsInput{
 		Resources: []string{resourceId},
 		Tags:      mapToTags(tagName, tagMap)})
-	lb.AddObject("CreateTags", out)
+	lb.AddObject(fmt.Sprintf("CreateTags(resources=%s,tag:Name=%s)", resourceId, tagName), out)
 	if err != nil {
 		return fmt.Errorf("cannot tag resource %s: %s", resourceId, err.Error())
 	}

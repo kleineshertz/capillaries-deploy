@@ -1,16 +1,9 @@
 {
   // Variables to play with
 
-  local provider_name = 'aws',
   local dep_name = 'sampleaws001',  // Can be any combination of alphanumeric characters. Make it unique.
   local subnet_availability_zone = 'us-east-1a', // AWS-specific
-    
-  // 1. aws or azure
-  // 2. amd64 or arm64
-  // 3. Flavor family
-  // 4. Number of cores in Cassandra nodes. Daemon cores are 4 times less.
-  // Check out instance_flavor below for full list of available setups or add your own
-  local deployment_flavor_power = provider_name + '.arm64.c7g.16',
+  local deployment_flavor_power = 'aws.arm64.c7g.8', // 1. aws or azure, 2. amd64 or arm64, 3. Flavor family, 4. Number of cores in Cassandra nodes. Daemon cores are 4 times less.
 
    // Cassandra cluster size - 4,8,16
   local cassandra_total_nodes = 4,
@@ -20,8 +13,10 @@
   // max: daemon_cores*1.5 (which is the same as cassandra cores / 4 * 1.5)
   local DEFAULT_DAEMON_THREAD_POOL_SIZE = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4 * 1.5), 
 
-  // Depends on cassandra latency, reasonable values are 5-20. Let it be daemon cores
-  local DEFAULT_DAEMON_DB_WRITERS = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4), 
+  // Depends on cassandra latency, reasonable values are 5-20. Let it be:
+  // - perf testing: cassandra cores / 2: 8->4 16->8 32->16 64->32
+  // - prod: cassandra cores / 4: 8->2 16->4 32->8 64->16
+  local DEFAULT_DAEMON_DB_WRITERS = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 2), 
 
   // If tasks are CPU-intensive (Python calc), make it equal to cassandra_total_nodes, otherwise cassandra_total_nodes/2 may be enough
   local daemon_total_instances = cassandra_total_nodes, 
@@ -63,25 +58,31 @@
   
   // Instances
   local instance_image_id = 
-    if architecture == 'arm64' then 'ami-09b2701695676705d'// ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20240117 // 'ami-064b469793e32e5d2' ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20230904
-    else if architecture == 'amd64' then 'ami-0d8583a0d8d6dd14f' //ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-amd64-server-20230714
+    if architecture == 'arm64' then 'ami-01296213d823247f2' // ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-20240615
+    else if architecture == 'amd64' then 'ami-02f9afd340e6c0065' // ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20240606
     else 'unknown-architecture-unknown-image',
 
+  // local instance_image_id = 
+  //   if architecture == 'arm64' then 'ami-09b2701695676705d'// ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20240117 // 'ami-064b469793e32e5d2' ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20230904
+  //   else if architecture == 'amd64' then 'ami-0d8583a0d8d6dd14f' //ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-amd64-server-20230714
+  //   else 'unknown-architecture-unknown-image',
+
   local instance_flavor = getFromMap({
-    'aws.amd64.c6a.16': {cassandra:'c6a.4xlarge',   cass_nvme_regex:'unknown-nvme-regex',     daemon: 'c6a.xlarge',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
-    'aws.amd64.c6a.32': {cassandra:'c5ad.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 558.8G', daemon: 'c6a.2xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
-    'aws.amd64.c6a.64': {cassandra:'c6ad.16xlarge', cass_nvme_regex:'unknown-nvme-regex',     daemon: 'c6a.4xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
-    'aws.arm64.c7g.16': {cassandra:'c7gd.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 884.8G', daemon: 'c7g.xlarge',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
-    'aws.arm64.c7g.32': {cassandra:'c7gd.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',   daemon: 'c7g.2xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
-    'aws.arm64.c7g.64': {cassandra:'c7gd.16xlarge', cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',   daemon: 'c7g.4xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'}
+    'aws.amd64.c5a.4':  {cassandra:'c5ad.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.medium',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.amd64.c5a.8':  {cassandra:'c5ad.2xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.large',   rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.amd64.c5a.16': {cassandra:'c5ad.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.xlarge',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.amd64.c5a.32': {cassandra:'c5ad.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 558.8G',        daemon: 'c6a.2xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.amd64.c5a.64': {cassandra:'c5ad.16xlarge', cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]T', daemon: 'c6a.4xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.arm64.c7g.4':  {cassandra:'c7gd.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c7g.medium',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
+    'aws.arm64.c7g.8':  {cassandra:'c7gd.2xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c7g.large',   rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
+    'aws.arm64.c7g.16': {cassandra:'c7gd.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 884.8G',        daemon: 'c7g.xlarge',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
+    'aws.arm64.c7g.32': {cassandra:'c7gd.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',          daemon: 'c7g.2xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
+    'aws.arm64.c7g.64': {cassandra:'c7gd.16xlarge', cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',          daemon: 'c7g.4xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'}
   }, deployment_flavor_power),
 
   // Volumes
   local volume_availability_zone = subnet_availability_zone, // Keep it simple
 
-  // Something modest to store in/out data and cfg
-  local volume_type = 'gp2',
-  
   // Prometheus and exporters versions
   local prometheus_node_exporter_version = '1.6.0',
   local prometheus_server_version = '2.45.0',
@@ -94,7 +95,7 @@
                              "\\'" + std.join(":9100\\',\\'", daemon_ips) + ":9100\\'",      // Prometheus node exporter
 
   deployment_name: dep_name,
-  deploy_provider_name: provider_name,
+  deploy_provider_name: std.split(deployment_flavor_power,".")[0],
 
   ssh_config: {
     bastion_external_ip_address_name: dep_name +  '_bastion_external_ip_name',
@@ -287,7 +288,7 @@
           availability_zone: volume_availability_zone,
           mount_point: '/mnt/capi_log',
           size: 10,
-          type: volume_type,
+          type: 'gp2', // No need for a top-spedd drive
           permissions: 777,
           owner: $.ssh_config.user,
         },
@@ -296,8 +297,8 @@
         env: {
           CAPILLARIES_RELEASE_URL: '{CAPIDEPLOY_CAPILLARIES_RELEASE_URL}',
           OS_ARCH: os_arch,
-          S3_IAM_USER_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_S3_IAM_USER_AWS_ACCESS_KEY_ID}',
-          S3_IAM_USER_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_S3_IAM_USER_AWS_SECRET_ACCESS_KEY}',
+          // S3_IAM_USER_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_S3_IAM_USER_AWS_ACCESS_KEY_ID}',
+          // S3_IAM_USER_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_S3_IAM_USER_AWS_SECRET_ACCESS_KEY}',
           S3_AWS_DEFAULT_REGION: '{CAPIDEPLOY_S3_AWS_DEFAULT_REGION}',
           AMQP_URL: 'amqp://{CAPIDEPLOY_RABBITMQ_USER_NAME}:{CAPIDEPLOY_RABBITMQ_USER_PASS}@' + rabbitmq_ip + '/',
           CASSANDRA_HOSTS: cassandra_hosts,
@@ -496,8 +497,8 @@
           INTERNAL_BASTION_IP: internal_bastion_ip,
           CAPILLARIES_RELEASE_URL: '{CAPIDEPLOY_CAPILLARIES_RELEASE_URL}',
           OS_ARCH: os_arch,
-          S3_IAM_USER_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_S3_IAM_USER_AWS_ACCESS_KEY_ID}',
-          S3_IAM_USER_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_S3_IAM_USER_AWS_SECRET_ACCESS_KEY}',
+          // S3_IAM_USER_AWS_ACCESS_KEY_ID: '{CAPIDEPLOY_S3_IAM_USER_AWS_ACCESS_KEY_ID}',
+          // S3_IAM_USER_AWS_SECRET_ACCESS_KEY: '{CAPIDEPLOY_S3_IAM_USER_AWS_SECRET_ACCESS_KEY}',
           S3_AWS_DEFAULT_REGION: '{CAPIDEPLOY_S3_AWS_DEFAULT_REGION}',
           AMQP_URL: 'amqp://{CAPIDEPLOY_RABBITMQ_USER_NAME}:{CAPIDEPLOY_RABBITMQ_USER_PASS}@' + rabbitmq_ip + '/',
           CASSANDRA_HOSTS: cassandra_hosts,

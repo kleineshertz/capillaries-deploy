@@ -10,21 +10,21 @@ import (
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
 )
 
-func createAwsSecurityGroup(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, sgDef *prj.SecurityGroupDef, vpcId string) error {
-	groupId, err := cldaws.GetSecurityGroupIdByName(client, goCtx, lb, sgDef.Name)
+func createAwsSecurityGroup(ec2Client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, sgDef *prj.SecurityGroupDef, vpcId string) error {
+	groupId, err := cldaws.GetSecurityGroupIdByName(ec2Client, goCtx, lb, sgDef.Name)
 	if err != nil {
 		return err
 	}
 
 	if groupId == "" {
-		groupId, err = cldaws.CreateSecurityGroup(client, goCtx, tags, lb, sgDef.Name, vpcId)
+		groupId, err = cldaws.CreateSecurityGroup(ec2Client, goCtx, tags, lb, sgDef.Name, vpcId)
 		if err != nil {
 			return err
 		}
 	}
 
 	for _, rule := range sgDef.Rules {
-		err := cldaws.AuthorizeSecurityGroupIngress(client, goCtx, lb, groupId, rule.Protocol, int32(rule.Port), rule.RemoteIp)
+		err := cldaws.AuthorizeSecurityGroupIngress(ec2Client, goCtx, lb, groupId, rule.Protocol, int32(rule.Port), rule.RemoteIp)
 		if err != nil {
 			return err
 		}
@@ -53,8 +53,8 @@ func (p *AwsDeployProvider) CreateSecurityGroups() (l.LogMsg, error) {
 	return lb.Complete(nil)
 }
 
-func deleteAwsSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, sgDef *prj.SecurityGroupDef) error {
-	foundId, err := cldaws.GetSecurityGroupIdByName(client, goCtx, lb, sgDef.Name)
+func deleteAwsSecurityGroup(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, sgDef *prj.SecurityGroupDef) error {
+	foundId, err := cldaws.GetSecurityGroupIdByName(ec2Client, goCtx, lb, sgDef.Name)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func deleteAwsSecurityGroup(client *ec2.Client, goCtx context.Context, lb *l.Log
 		return nil
 	}
 
-	return cldaws.DeleteSecurityGroup(client, goCtx, lb, foundId)
+	return cldaws.DeleteSecurityGroup(ec2Client, goCtx, lb, foundId)
 }
 
 func (p *AwsDeployProvider) DeleteSecurityGroups() (l.LogMsg, error) {

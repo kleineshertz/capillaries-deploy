@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	cc "github.com/aws/aws-sdk-go-v2/service/cloudcontrol"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	tagging "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
@@ -215,7 +214,7 @@ func getResourceNameTag(ec2Client *ec2.Client, goCtx context.Context, resourceId
 	return "", nil
 }
 
-func GetResourcesByTag(tClient *tagging.Client, ccClient *cc.Client, ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, region string, tagName string, tagVal string) ([]string, error) {
+func GetResourcesByTag(tClient *tagging.Client, ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, region string, tagName string, tagVal string) ([]string, error) {
 	resources := make([]*Resource, 0)
 	paginationToken := ""
 	for {

@@ -72,13 +72,13 @@ init_volume_attachment()
 }
 `
 
-func GetVolumeIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volName string) (string, error) {
+func GetVolumeIdByName(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volName string) (string, error) {
 	if volName == "" {
 		return "", fmt.Errorf("empty parameter not allowed: volName (%s)", volName)
 	}
-	out, err := client.DescribeVolumes(goCtx, &ec2.DescribeVolumesInput{
+	out, err := ec2Client.DescribeVolumes(goCtx, &ec2.DescribeVolumesInput{
 		Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{volName}}}})
-	lb.AddObject("DescribeVolumes", out)
+	lb.AddObject(fmt.Sprintf("DescribeVolumes(tag:Name=%s)", volName), out)
 	if err != nil {
 		return "", fmt.Errorf("cannot describe volume %s: %s", volName, err.Error())
 	}
@@ -88,12 +88,12 @@ func GetVolumeIdByName(client *ec2.Client, goCtx context.Context, lb *l.LogBuild
 	return *out.Volumes[0].VolumeId, nil
 }
 
-func GetVolumeAttachedDeviceById(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string) (string, types.VolumeAttachmentState, error) {
+func GetVolumeAttachedDeviceById(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string) (string, types.VolumeAttachmentState, error) {
 	if volId == "" {
 		return "", types.VolumeAttachmentStateDetached, fmt.Errorf("empty parameter not allowed: volId (%s)", volId)
 	}
-	out, err := client.DescribeVolumes(goCtx, &ec2.DescribeVolumesInput{VolumeIds: []string{volId}})
-	lb.AddObject("DescribeVolumes", out)
+	out, err := ec2Client.DescribeVolumes(goCtx, &ec2.DescribeVolumesInput{VolumeIds: []string{volId}})
+	lb.AddObject(fmt.Sprintf("DescribeVolumes(VolumeIds=%s)", volId), out)
 	if err != nil {
 		return "", types.VolumeAttachmentStateDetached, fmt.Errorf("cannot describe volume by id %s: %s", volId, err.Error())
 	}
@@ -115,7 +115,7 @@ func stringToVolType(volTypeString string) (types.VolumeType, error) {
 	return types.VolumeTypeStandard, fmt.Errorf("unknown volume type %s", volTypeString)
 }
 
-func CreateVolume(client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, volName string, availabilityZone string, size int32, volTypeString string) (string, error) {
+func CreateVolume(ec2Client *ec2.Client, goCtx context.Context, tags map[string]string, lb *l.LogBuilder, volName string, availabilityZone string, size int32, volTypeString string) (string, error) {
 	volType, err := stringToVolType(volTypeString)
 	if err != nil {
 		return "", err
@@ -123,29 +123,29 @@ func CreateVolume(client *ec2.Client, goCtx context.Context, tags map[string]str
 	if volName == "" || availabilityZone == "" || size == 0 {
 		return "", fmt.Errorf("empty parameter not allowed: volName (%s), availabilityZone (%s), size (%d)", volName, availabilityZone, size)
 	}
-	out, err := client.CreateVolume(goCtx, &ec2.CreateVolumeInput{
+	out, err := ec2Client.CreateVolume(goCtx, &ec2.CreateVolumeInput{
 		AvailabilityZone: aws.String(availabilityZone),
 		Size:             aws.Int32(size),
 		VolumeType:       volType,
 		TagSpecifications: []types.TagSpecification{{
 			ResourceType: types.ResourceTypeVolume,
 			Tags:         mapToTags(volName, tags)}}})
-	lb.AddObject("CreateVolume", out)
+	lb.AddObject(fmt.Sprintf("CreateVolume(volName=%s,availabilityZone=%s,size=%d)", volName, availabilityZone, size), out)
 	if err != nil {
 		return "", fmt.Errorf("cannot create volume %s: %s", volName, err.Error())
 	}
 	return *out.VolumeId, nil
 }
 
-func AttachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string, instanceId string, suggestedDevice string, timeoutSeconds int) (string, error) {
+func AttachVolume(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string, instanceId string, suggestedDevice string, timeoutSeconds int) (string, error) {
 	if volId == "" || instanceId == "" || suggestedDevice == "" {
 		return "", fmt.Errorf("empty parameter not allowed: volId (%s), instanceId (%s), suggestedDevice (%s)", volId, instanceId, suggestedDevice)
 	}
-	out, err := client.AttachVolume(goCtx, &ec2.AttachVolumeInput{
+	out, err := ec2Client.AttachVolume(goCtx, &ec2.AttachVolumeInput{
 		VolumeId:   aws.String(volId),
 		InstanceId: aws.String(instanceId),
 		Device:     &suggestedDevice})
-	lb.AddObject("AttachVolume", out)
+	lb.AddObject(fmt.Sprintf("AttachVolume(volId=%s,instanceId=%s,suggestedDevice=%s)", volId, instanceId, suggestedDevice), out)
 	if err != nil {
 		return "", fmt.Errorf("cannot attach volume %s to instance %s as device %s : %s", volId, instanceId, suggestedDevice, err.Error())
 	}
@@ -154,7 +154,7 @@ func AttachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 
 	startWaitTs := time.Now()
 	for {
-		foundDevice, state, err := GetVolumeAttachedDeviceById(client, goCtx, lb, volId)
+		foundDevice, state, err := GetVolumeAttachedDeviceById(ec2Client, goCtx, lb, volId)
 		if err != nil {
 			return "", err
 		}
@@ -176,22 +176,22 @@ func AttachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 	return newDevice, nil
 }
 
-func DetachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string, instanceId string, attachedDevice string, timeoutSeconds int) error {
+func DetachVolume(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string, instanceId string, attachedDevice string, timeoutSeconds int) error {
 	if volId == "" || instanceId == "" || attachedDevice == "" {
 		return fmt.Errorf("empty parameter not allowed: volId (%s), instanceId (%s), attachedDevice (%s)", volId, instanceId, attachedDevice)
 	}
-	out, err := client.DetachVolume(goCtx, &ec2.DetachVolumeInput{
+	out, err := ec2Client.DetachVolume(goCtx, &ec2.DetachVolumeInput{
 		VolumeId:   aws.String(volId),
 		InstanceId: aws.String(instanceId),
 		Device:     &attachedDevice})
-	lb.AddObject("DetachVolume", out)
+	lb.AddObject(fmt.Sprintf("DetachVolume(volId=%s,instanceId=%s,attachedDevice=%s)", volId, instanceId, attachedDevice), out)
 	if err != nil {
 		return fmt.Errorf("cannot attach volume %s to instance %s: %s", volId, instanceId, err.Error())
 	}
 
 	startWaitTs := time.Now()
 	for {
-		_, state, err := GetVolumeAttachedDeviceById(client, goCtx, lb, volId)
+		_, state, err := GetVolumeAttachedDeviceById(ec2Client, goCtx, lb, volId)
 		if err != nil {
 			return err
 		}
@@ -209,12 +209,9 @@ func DetachVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, v
 	return nil
 }
 
-func DeleteVolume(client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string) error {
-	if volId == "" {
-		return fmt.Errorf("empty parameter not allowed: volId (%s)", volId)
-	}
-	out, err := client.DeleteVolume(goCtx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volId)})
-	lb.AddObject("DeleteVolume", out)
+func DeleteVolume(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, volId string) error {
+	out, err := ec2Client.DeleteVolume(goCtx, &ec2.DeleteVolumeInput{VolumeId: aws.String(volId)})
+	lb.AddObject(fmt.Sprintf("DeleteVolume(VolumeId=%s)", volId), out)
 	if err != nil {
 		return fmt.Errorf("cannot delete volume %s: %s", volId, err.Error())
 	}
