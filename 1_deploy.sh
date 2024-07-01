@@ -65,8 +65,6 @@ set -x
 ./capideploy config_services "bastion,rabbitmq,prometheus,daemon*" -p sample.jsonnet -v >> deploy.log
 #./capideploy config_services "bastion" -p sample.jsonnet -v >> deploy.log
 
-exit 0
-
 ssh -o StrictHostKeyChecking=no -i $CAPIDEPLOY_SSH_PRIVATE_KEY_PATH -J $BASTION_IP $CAPIDEPLOY_SSH_USER@10.5.0.11 'nodetool describecluster;nodetool status'
 
 duration=$SECONDS

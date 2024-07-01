@@ -14,8 +14,8 @@
   local DEFAULT_DAEMON_THREAD_POOL_SIZE = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4 * 1.5), 
 
   // Depends on cassandra latency, reasonable values are 5-20. Let it be:
-  // - perf testing: cassandra cores / 2: 8->4 16->8 32->16 64->32
-  // - prod: cassandra cores / 4: 8->2 16->4 32->8 64->16
+  // - max perf (->100% CPU): cassandra cores / 2: 8->4 16->8 32->16 64->32
+  // - cpnservative: cassandra cores / 4: 8->2 16->4 32->8 64->16
   local DEFAULT_DAEMON_DB_WRITERS = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 2), 
 
   // If tasks are CPU-intensive (Python calc), make it equal to cassandra_total_nodes, otherwise cassandra_total_nodes/2 may be enough
