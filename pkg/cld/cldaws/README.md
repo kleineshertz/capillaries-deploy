@@ -1,0 +1,1 @@
+No project-related code here please. This code is intended to run as part of the alternative (commercial?) deployment mechanism, not capideploy tool.
