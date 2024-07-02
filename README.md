@@ -15,7 +15,8 @@ Your AWS deployment will need to read and write files from/to S3 bucket. As per 
 - capideploy S3 bucket access model uses a separate policy and a separate role with this policy attached, and Capillaries instances can assume that role.
 
 In `IAM->Policies`, let's create a policy `PolicyAccessCapillariesTestbucket` that allows access to the bucket we will be using:
-``` json
+
+```json
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -41,7 +42,7 @@ In `IAM->Roles`, create a role `RoleAccessCapillariesTestbucket` with `Trusted e
 - attach the newly created `PolicyAccessCapillariesTestbucket` to it (`Permissions` tab);
 - under `Trust relationships`, make sure that ec2 service can assume this role:
 
-``` json
+```json
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -79,7 +80,7 @@ As we agreed above, `UserCapideployOperator` (who potentially can be a third par
 
 In IAM->Policies, create a customer-managed policy PolicyCapideployOperator:
 
-``` json
+```json
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -150,7 +151,7 @@ In IAM->Policies, create a customer-managed policy PolicyCapideployOperator:
 The first part is obvious: it lists all AWS API calls performed by capideploy. As for the second part,it adds PassRole permission for `RoleAccessCapillariesTestbucket` created above. Without this permission, `AssociateIamInstanceProfile` call (that tells AWS to allow instances to access the bucket) will fail.
 
 Just in case - to list all AWS API calls used by capideploy, run:
-``` shell
+```shell
 grep -r -e "ec2Client\.[A-Za-z]*" --include "*.go"
 grep -r -e "tClient\.[A-Za-z]*" --include "*.go"
 ```
@@ -211,7 +212,7 @@ Please note that in order to run these tests or your own scripts in your newly c
 
 In general, you can start a Capillaries run in your deployment via REST API as follows:
 
-``` shell
+```shell
 CAPILLARIES_AWS_TESTBUCKET=capillaries-testbucket
 keyspace="lookup_quicktest_s3"
 cfgS3=s3://$CAPILLARIES_AWS_TESTBUCKET/capi_cfg/lookup_quicktest
