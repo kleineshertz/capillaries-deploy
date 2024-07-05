@@ -1,16 +1,25 @@
 # IAM settings
 
-You can run capideploy under your AWS root account, but this is generally discouraged. Let's pretend that capideploy is executed by a third party and you want to grant that third party some specific permissions that allow that third party to create Capillaries deployment in AWS. Giving a third party access to your AWS resources is a standard practice and the recommended way to do that is to use IAM roles. This  section discusses the AWS IAM preparation steps to create the necessary role structure. Basic familiarity with AWS console is required.
+You can run capideploy under your AWS root account, but this is generally discouraged. Chances are you want to run capideploy as some IAM user, or even better, let's pretend that capideploy is executed by some third party or a temporary contractor. You want to grant that third party some specific permissions that allow that third party to create Capillaries deployment in your AWS workspace. Giving a third party access to your AWS resources is a standard practice and the recommended way to do that is to use IAM roles. This section discusses the AWS IAM preparation steps to create the necessary role structure. Basic familiarity with AWS console is required.
 
 ## Users and groups
 
 Let's assume all capideploy activities are performed on behalf of an IAM user named `UserCapideployOperator`. As a first step, create this user in `IAM->Users` section of AWS console. In `IAM->User groups`, create a group `GroupCapideployOperators` and add `UserCapideployOperator` to it.
 
+Create credentials for `UserCapideployOperator` and save them in UserCapideployOperator.rc:
+```
+export AWS_ACCESS_KEY_ID=AK...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_DEFAULT_REGION=us-east-1
+```
+
+If you want to run capideploy unnder this account (not under some SaaS provider account as described below), run this .rc file before running capideploy, so AWS SDK can use those credentials.
+
 ## Policies and roles
 
 ### PolicyAccessCapillariesTestbucket and RoleAccessCapillariesTestbucket
 
-Your AWS deployment will need to read and write files from/to S3 bucket. As per [Capillaries S3 instructions](https://github.com/capillariesio/capillaries/blob/main/doc/s3.md), we assume that you already have an S3 bucket for your future Capillaries deployment, let's assume the name of the bucket is `capillaries-testbucket` and it has `Block all public access` setting on. And here is the key difference:
+Your AWS deployment will need to read and write files from/to S3 bucket. As per [Capillaries S3 instructions](https://github.com/capillariesio/capillaries/blob/main/doc/s3.md), we assume that you already have an S3 bucket for your future Capillaries deployment, let's assume the name of the bucket is `capillaries-testbucket` (in fact, it will be more like `acmme-corp-prod-files`) and it has `Block all public access` setting on (assuming you do not want strangers to see your files). And here is the key difference:
 - Capillaries test S3 bucket access described in that doc uses user-based access model (bucket policy explicitly gives the user `arn:aws:iam::<your_aws_acount>:user/UserAccessCapillariesTestbucket` access to the bucket);
 - capideploy S3 bucket access model uses a separate policy and a separate role with this policy attached, and Capillaries instances can assume that role.
 
@@ -85,7 +94,6 @@ In IAM->Policies, create a customer-managed policy PolicyCapideployOperator:
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "PolicyCapideployOperatorCreateInfra",
             "Effect": "Allow",
             "Action": [
                 "ec2:AllocateAddress",
@@ -139,7 +147,6 @@ In IAM->Policies, create a customer-managed policy PolicyCapideployOperator:
             "Resource": "*"
         },
         {
-            "Sid": "PolicyCapideployOperatorPassRoleAccessBucket",
             "Effect": "Allow",
             "Action": "iam:PassRole",
             "Resource": "arn:aws:iam::<your_aws_account_id>:role/RoleAccessCapillariesTestbucket"
@@ -159,6 +166,127 @@ grep -r -e "tClient\.[A-Za-z]*" --include "*.go"
 ## Attach PolicyCapideployOperator to GroupCapideployOperators
 
 In `IAM->User groups->GroupCapideployOperators->Permissions`, attach `PolicyCapideployOperator`.
+
+# IAM Settings - SaaS scenario
+
+capideploy can be executed by a third-party, like some SaaS provider or a contractor who needs access to your AWS resources. If you have to do that, the following additional settings are required. Assuming "you" are the "customer" of the SaaS provider.
+
+## SaaS user
+
+In SaaS provider console `IAM->Users`, create a new user `UserSaasCapideployOperator`. This will be the account capideply will be running under. Create credentials for `UserSaasCapideployOperator` and save them in UserSaasCapideployOperator.rc:
+```
+export AWS_ACCESS_KEY_ID=AK...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_DEFAULT_REGION=us-east-1
+```
+
+If you want to run capideploy unnder this SaaS account (not under your `UserCapideployOperator` account as described above), run this .rc file before running capideploy, so AWS SDK can use those credentials.
+
+## SaaS policy
+
+In SaaS provider console `IAM->Policies`, create a new policy `PolicySaasCapideployOperator` as follows:
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AllocateAddress",
+                "ec2:AssociateAddress",
+                "ec2:AssociateIamInstanceProfile",
+                "ec2:AssociateRouteTable",
+                "ec2:AttachInternetGateway",
+                "ec2:AttachVolume",
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:CreateImage",
+                "ec2:CreateInternetGateway",
+                "ec2:CreateNatGateway",
+                "ec2:CreateRoute",
+                "ec2:CreateRouteTable",
+                "ec2:CreateSecurityGroup",
+                "ec2:CreateSubnet",
+                "ec2:CreateTags",
+                "ec2:CreateVolume",
+                "ec2:CreateVpc",
+                "ec2:DeleteInternetGateway",
+                "ec2:DeleteNatGateway",
+                "ec2:DeleteRouteTable",
+                "ec2:DeleteSecurityGroup",
+                "ec2:DeleteSnapshot",
+                "ec2:DeleteSubnet",
+                "ec2:DeleteVolume",
+                "ec2:DeleteVpc",
+                "ec2:DeregisterImage",
+                "ec2:DescribeAddresses",
+                "ec2:DescribeImages",
+                "ec2:DescribeInstances",
+                "ec2:DescribeInstanceTypes",
+                "ec2:DescribeInternetGateways",
+                "ec2:DescribeKeyPairs",
+                "ec2:DescribeNatGateways",
+                "ec2:DescribeRouteTables",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeSnapshots",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeTags",
+                "ec2:DescribeVolumes",
+                "ec2:DescribeVpcs",
+                "ec2:DetachInternetGateway",
+                "ec2:DetachVolume",
+                "ec2:ReleaseAddress",
+                "ec2:RunInstances",
+                "ec2:TerminateInstances",
+                "iam:GetInstanceProfile",
+                "tag:GetResources",
+                "iam:PassRole",
+                "sts:AssumeRole"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+This policy is very similar to your `PolicyCapideployOperator`, but there are two important differences:
+- it allows `iam:PassRole` for *all* resources (because SaaS provider user will work with many customers, it will need access not only to your `arn:aws:iam::<your_aws_account_id>:role/RoleAccessCapillariesTestbucket`, but to all relevant roles from many customers)
+- it allows `sts:AssumeRole`, capideploy will call AWS API `AssumeRole("arn:aws:iam::<your_aws_account_id>:role/RoleCapideployOperator", externalId)` when establishing an AWS service session, so it will create/delete all resources on your (`<your_aws_account_id>`) behalf.
+
+Attach `PolicySaasCapideployOperator` to `UserSaasCapideployOperator`.
+
+## SaaS customer - trust UserSaasCapideployOperator
+
+In your AWS console's `IAM->Roles->RoleCapideployOperator->Trusted relationships`, add:
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::<saas_provider_aws_account_id>:user/UserSaasCapideployOperator"
+            },
+            "Action": "sts:AssumeRole",
+            "Condition": {
+                "StringEquals": {
+                    "sts:ExternalId": "someExternalId"
+                }
+            }
+        }
+    ]
+}
+```
+
+This will allow `UserSaasCapideployOperator` to perform all actions listed in your (customer's) `PolicySaasCapideployOperator` on your (customer's) AWS resources.
+
+## capideploy SaaS parameters
+
+If you want to run capideploy as SaaS provider's `UserSaasCapideployOperator`, make sure to specify `-r` and `-e` parameters, for example:
+```shell
+./capideploy list_deployment_resources -p sample.jsonnet -r  arn:aws:iam::<your_aws_account_id>:role/RoleCapideployOperator -e someExternalId
+```
+
+They will tell capideploy to assume the specified role before performing any action, so it will look like someone from your AWS account performs them.
 
 # Environment variables used by Capideploy
 
@@ -187,7 +315,7 @@ export CAPIDEPLOY_RABBITMQ_ADMIN_PASS=...
 export CAPIDEPLOY_RABBITMQ_USER_NAME=...
 export CAPIDEPLOY_RABBITMQ_USER_PASS=...
 
-# ~/.aws/config: default/region (without it, AWS API will not locate S3 buckets)
+# ~/.aws/config: default/region (without it, AWS API will not locate S3 buckets, it goes to /home/$SSH_USER/.aws/config)
 export CAPIDEPLOY_S3_AWS_DEFAULT_REGION=us-east-1
 
 # Capideploy will use this instance profile when creating instances that need access to S3 bucket

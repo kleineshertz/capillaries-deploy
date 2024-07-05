@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	CmdListDeployments                   string = "list_deployments"
 	CmdListDeploymentResources           string = "list_deployment_resources"
 	CmdCreateFloatingIps                 string = "create_floating_ips"
 	CmdDeleteFloatingIps                 string = "delete_floating_ips"
@@ -124,6 +125,7 @@ Commands:
   %s -p <jsonnet project file>
   %s -p <jsonnet project file>
   %s -p <jsonnet project file>
+  %s -p <jsonnet project file>
   %s <comma-separated list of instances to create volumes on, or 'all'> -p <jsonnet project file>
   %s <comma-separated list of instances to attach volumes on, or 'all'> -p <jsonnet project file>
   %s <comma-separated list of instances to detach volumes on, or 'all'> -p <jsonnet project file>
@@ -139,6 +141,7 @@ Commands:
   %s <comma-separated list of instances to create from snapshot images, or 'all'> -p <jsonnet project file>
   %s <comma-separated list of instances to delete snapshot images for, or 'all'> -p <jsonnet project file>
 `,
+		CmdListDeployments,
 		CmdListDeploymentResources,
 
 		CmdCreateFloatingIps,
@@ -238,6 +241,8 @@ func main() {
 	argNumberOfRepetitions := commonArgs.Int("n", 1, "Number of repetitions")
 	argShowProjectDetails := commonArgs.Bool("s", false, "Show project details (may contain sensitive info)")
 	argIgnoreAttachedVolumes := commonArgs.Bool("i", false, "Ignore attached volumes on instance delete")
+	argAssumeRole := commonArgs.String("r", "", "A role from another AWS account to assume, act like a third-party service")
+	argAssumeRoleExternalId := commonArgs.String("e", "", "When a role from another AWS account is assumed, use this external-id (optional, but encouraged)")
 
 	cmdStartTs := time.Now()
 
@@ -254,6 +259,7 @@ func main() {
 	var prjErr error
 
 	singleThreadCommands := map[string]SingleThreadCmdHandler{
+		CmdListDeployments:         nil,
 		CmdListDeploymentResources: nil,
 		CmdCreateFloatingIps:       nil,
 		CmdDeleteFloatingIps:       nil,
@@ -277,10 +283,11 @@ func main() {
 		log.Fatalf(prjErr.Error())
 	}
 
-	deployProvider, deployProviderErr := provider.DeployProviderFactory(project, context.TODO(), *argVerbosity)
+	deployProvider, deployProviderErr := provider.DeployProviderFactory(project, context.TODO(), &provider.AssumeRoleConfig{RoleArn: *argAssumeRole, ExternalId: *argAssumeRoleExternalId}, *argVerbosity)
 	if deployProviderErr != nil {
 		log.Fatalf(deployProviderErr.Error())
 	}
+	singleThreadCommands[CmdListDeployments] = deployProvider.ListDeployments
 	singleThreadCommands[CmdListDeploymentResources] = deployProvider.ListDeploymentResources
 	singleThreadCommands[CmdCreateFloatingIps] = deployProvider.CreateFloatingIps
 	singleThreadCommands[CmdDeleteFloatingIps] = deployProvider.DeleteFloatingIps

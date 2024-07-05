@@ -14,34 +14,39 @@ import (
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 )
 
-type BilledState string
+type ResourceBilledState string
 
 const (
-	BilledStateUnknown  BilledState = "unknown"
-	BilledStateBilled   BilledState = "billed"
-	BilledStateUnbilled BilledState = "unbilled"
+	ResourceBilledStateUnknown    ResourceBilledState = "unknown"
+	ResourceBilledStateActive     ResourceBilledState = "active"
+	ResourceBilledStateTerminated ResourceBilledState = "terminated"
 )
 
+const DeploymentNameTagName string = "DeploymentName"
+const DeploymentOperatorTagName string = "DeploymentOperator"
+const DeploymentOperatorTagValue string = "capideploy"
+
 type Resource struct {
-	Svc    string
-	Type   string
-	Id     string
-	Name   string
-	State  string
-	Billed BilledState
+	DeploymentName string
+	Svc            string
+	Type           string
+	Id             string
+	Name           string
+	State          string
+	BilledState    ResourceBilledState
 }
 
 func (r *Resource) String() string {
-	return fmt.Sprintf("%s,%s,%s,%s,%s,%s", r.Svc, r.Type, r.Name, r.Id, r.State, r.Billed)
+	return fmt.Sprintf("%s, %s,%s,%s,%s,%s,%s", r.DeploymentName, r.Svc, r.Type, r.Name, r.Id, r.State, r.BilledState)
 }
 
 func arnToResource(arn string) Resource {
 	r := Resource{
-		Svc:    "unknown",
-		Type:   "unknown",
-		Id:     "unknown",
-		State:  "unknown",
-		Billed: BilledStateUnknown,
+		Svc:         "unknown",
+		Type:        "unknown",
+		Id:          "unknown",
+		State:       "unknown",
+		BilledState: ResourceBilledStateUnknown,
 	}
 	s := strings.Split(arn, "/")
 	if len(s) >= 2 {
@@ -57,50 +62,50 @@ func arnToResource(arn string) Resource {
 	return r
 }
 
-func getInstanceBilledState(state types.InstanceStateName) BilledState {
+func getInstanceBilledState(state types.InstanceStateName) ResourceBilledState {
 	if state == types.InstanceStateNamePending || state == types.InstanceStateNameRunning {
-		return BilledStateBilled
+		return ResourceBilledStateActive
 	} else {
-		return BilledStateUnbilled
+		return ResourceBilledStateTerminated
 	}
 }
 
-func getVolumeBilledState(state types.VolumeState) BilledState {
+func getVolumeBilledState(state types.VolumeState) ResourceBilledState {
 	if state == types.VolumeStateAvailable || state == types.VolumeStateCreating || state == types.VolumeStateInUse {
-		return BilledStateBilled
+		return ResourceBilledStateActive
 	} else {
-		return BilledStateUnbilled
+		return ResourceBilledStateTerminated
 	}
 }
 
-func getNatGatewayBilledState(state types.NatGatewayState) BilledState {
+func getNatGatewayBilledState(state types.NatGatewayState) ResourceBilledState {
 	if state == types.NatGatewayStatePending || state == types.NatGatewayStateAvailable {
-		return BilledStateBilled
+		return ResourceBilledStateActive
 	} else {
-		return BilledStateUnbilled
+		return ResourceBilledStateTerminated
 	}
 }
 
-func getVpcBilledState(state types.VpcState) BilledState {
+func getVpcBilledState(state types.VpcState) ResourceBilledState {
 	if state == types.VpcStatePending || state == types.VpcStateAvailable {
-		return BilledStateBilled
+		return ResourceBilledStateActive
 	} else {
-		return BilledStateUnbilled
+		return ResourceBilledStateTerminated
 	}
 }
 
-func getImageBilledState(state types.ImageState) BilledState {
+func getImageBilledState(state types.ImageState) ResourceBilledState {
 	if state == types.ImageStateAvailable || state == types.ImageStateDisabled || state == types.ImageStateError || state == types.ImageStatePending || state == types.ImageStateTransient {
-		return BilledStateBilled
+		return ResourceBilledStateActive
 	} else {
-		return BilledStateUnbilled
+		return ResourceBilledStateTerminated
 	}
 }
-func getSnapshotBilledState(_ types.SnapshotState) BilledState {
-	return BilledStateBilled
+func getSnapshotBilledState(_ types.SnapshotState) ResourceBilledState {
+	return ResourceBilledStateActive
 }
 
-func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource) (string, BilledState, error) {
+func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource) (string, ResourceBilledState, error) {
 	switch r.Svc {
 	case "ec2":
 		switch r.Type {
@@ -109,7 +114,7 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			if err != nil {
 				return "", "", err
 			}
-			return *out.Addresses[0].PublicIp, BilledStateBilled, nil
+			return *out.Addresses[0].PublicIp, ResourceBilledStateActive, nil
 		case "vpc":
 			out, err := ec2Client.DescribeVpcs(goCtx, &ec2.DescribeVpcsInput{VpcIds: []string{r.Id}})
 			if err != nil {
@@ -121,36 +126,36 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			if err != nil {
 				return "", "", err
 			}
-			return string(out.Subnets[0].State), BilledStateBilled, nil
+			return string(out.Subnets[0].State), ResourceBilledStateActive, nil
 		case "security-group":
 			_, err := ec2Client.DescribeSecurityGroups(goCtx, &ec2.DescribeSecurityGroupsInput{GroupIds: []string{r.Id}})
 			if err != nil {
 				return "", "", err
 			}
-			return "present", BilledStateBilled, nil
+			return "present", ResourceBilledStateActive, nil
 		case "route-table":
 			out, err := ec2Client.DescribeRouteTables(goCtx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", BilledStateUnbilled, nil
+					return "doesnotexist", ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
-			return fmt.Sprintf("%droutes", len(out.RouteTables[0].Routes)), BilledStateBilled, nil
+			return fmt.Sprintf("%droutes", len(out.RouteTables[0].Routes)), ResourceBilledStateActive, nil
 		case "instance":
 			out, err := ec2Client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{InstanceIds: []string{r.Id}})
 			if err != nil {
 				return "", "", err
 			}
 			if len(out.Reservations) == 0 || len(out.Reservations[0].Instances) == 0 {
-				return "notfound", BilledStateUnbilled, nil
+				return "notfound", ResourceBilledStateTerminated, nil
 			}
 			return string(out.Reservations[0].Instances[0].State.Name), getInstanceBilledState(out.Reservations[0].Instances[0].State.Name), nil
 		case "volume":
 			out, err := ec2Client.DescribeVolumes(goCtx, &ec2.DescribeVolumesInput{VolumeIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", BilledStateUnbilled, nil
+					return "doesnotexist", ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
@@ -159,7 +164,7 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			out, err := ec2Client.DescribeNatGateways(goCtx, &ec2.DescribeNatGatewaysInput{NatGatewayIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "was not found") {
-					return "notfound", BilledStateUnbilled, nil
+					return "notfound", ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
@@ -168,16 +173,16 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			out, err := ec2Client.DescribeInternetGateways(goCtx, &ec2.DescribeInternetGatewaysInput{InternetGatewayIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", BilledStateUnbilled, nil
+					return "doesnotexist", ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
-			return fmt.Sprintf("%dattachments", len(out.InternetGateways[0].Attachments)), BilledStateBilled, nil
+			return fmt.Sprintf("%dattachments", len(out.InternetGateways[0].Attachments)), ResourceBilledStateActive, nil
 		case "image":
 			out, err := ec2Client.DescribeImages(goCtx, &ec2.DescribeImagesInput{ImageIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", BilledStateUnbilled, nil
+					return "doesnotexist", ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
@@ -187,7 +192,7 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			out, err := ec2Client.DescribeSnapshots(goCtx, &ec2.DescribeSnapshotsInput{SnapshotIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", BilledStateUnbilled, nil
+					return "doesnotexist", ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
@@ -200,46 +205,53 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 	}
 }
 
-func getResourceNameTag(ec2Client *ec2.Client, goCtx context.Context, resourceId string) (string, error) {
+func getResourceDeploymentNameAndNameTags(ec2Client *ec2.Client, goCtx context.Context, resourceId string) (string, string, error) {
 	out, err := ec2Client.DescribeTags(goCtx, &ec2.DescribeTagsInput{Filters: []types.Filter{{
 		Name: aws.String("resource-id"), Values: []string{resourceId}}}})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
+	deploymentNameTagValue := ""
+	resourceNameTagValue := ""
 	for _, tagDesc := range out.Tags {
 		if *tagDesc.Key == "Name" {
-			return *tagDesc.Value, nil
+			resourceNameTagValue = *tagDesc.Value
+		} else if *tagDesc.Key == DeploymentNameTagName {
+			deploymentNameTagValue = *tagDesc.Value
 		}
 	}
-	return "", nil
+	return deploymentNameTagValue, resourceNameTagValue, nil
 }
 
-func GetResourcesByTag(tClient *tagging.Client, ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, region string, tagName string, tagVal string) ([]string, error) {
+func GetResourcesByTag(tClient *tagging.Client, ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, region string, tagFilters []taggingTypes.TagFilter, readState bool) ([]*Resource, error) {
 	resources := make([]*Resource, 0)
 	paginationToken := ""
 	for {
 		out, err := tClient.GetResources(goCtx, &tagging.GetResourcesInput{
 			ResourcesPerPage: aws.Int32(100),
 			PaginationToken:  &paginationToken,
-			TagFilters:       []taggingTypes.TagFilter{{Key: aws.String(tagName), Values: []string{tagVal}}}})
+			TagFilters:       tagFilters})
 		if err != nil {
-			return []string{}, err
+			return []*Resource{}, err
 		}
 
 		for _, rtMapping := range out.ResourceTagMappingList {
 			res := arnToResource(*rtMapping.ResourceARN)
-			state, billedState, err := getResourceState(ec2Client, goCtx, &res)
-			if err != nil {
-				lb.Add(err.Error())
-			} else {
-				res.State = state
-				res.Billed = billedState
+			if readState {
+				state, billedState, err := getResourceState(ec2Client, goCtx, &res)
+				if err != nil {
+					lb.Add(err.Error())
+				} else {
+					res.State = state
+					res.BilledState = billedState
+				}
 			}
-			name, err := getResourceNameTag(ec2Client, goCtx, res.Id)
+			deploymentName, resourceName, err := getResourceDeploymentNameAndNameTags(ec2Client, goCtx, res.Id)
 			if err != nil {
 				lb.Add(err.Error())
 			} else {
-				res.Name = name
+				res.DeploymentName = deploymentName
+				res.Name = resourceName
 			}
 			resources = append(resources, &res)
 		}
@@ -250,7 +262,11 @@ func GetResourcesByTag(tClient *tagging.Client, ec2Client *ec2.Client, goCtx con
 	}
 
 	sort.Slice(resources, func(i, j int) bool {
-		if resources[i].Svc < resources[j].Svc {
+		if resources[i].DeploymentName < resources[j].DeploymentName {
+			return true
+		} else if resources[i].DeploymentName > resources[j].DeploymentName {
+			return false
+		} else if resources[i].Svc < resources[j].Svc {
 			return true
 		} else if resources[i].Svc > resources[j].Svc {
 			return false
@@ -271,9 +287,5 @@ func GetResourcesByTag(tClient *tagging.Client, ec2Client *ec2.Client, goCtx con
 		}
 	})
 
-	result := make([]string, len(resources))
-	for i, r := range resources {
-		result[i] = r.String()
-	}
-	return result, nil
+	return resources, nil
 }
