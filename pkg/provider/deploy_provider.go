@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -12,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	taggingTypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/capillariesio/capillaries-deploy/pkg/cld"
 	"github.com/capillariesio/capillaries-deploy/pkg/cld/cldaws"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
@@ -33,8 +33,8 @@ type DeployCtx struct {
 }
 type DeployProvider interface {
 	GetCtx() *DeployCtx
-	ListDeployments() (l.LogMsg, error)
-	ListDeploymentResources() (l.LogMsg, error)
+	ListDeployments() (map[string]int, l.LogMsg, error)
+	ListDeploymentResources() ([]*cld.Resource, l.LogMsg, error)
 	CreateFloatingIps() (l.LogMsg, error)
 	DeleteFloatingIps() (l.LogMsg, error)
 	CreateSecurityGroups() (l.LogMsg, error)
@@ -91,8 +91,8 @@ func DeployProviderFactory(project *prj.Project, goCtx context.Context, assumeRo
 				GoCtx:     goCtx,
 				IsVerbose: isVerbose,
 				Tags: map[string]string{
-					cldaws.DeploymentNameTagName:     project.DeploymentName,
-					cldaws.DeploymentOperatorTagName: cldaws.DeploymentOperatorTagValue},
+					cld.DeploymentNameTagName:     project.DeploymentName,
+					cld.DeploymentOperatorTagName: cld.DeploymentOperatorTagValue},
 				Aws: &AwsCtx{
 					Ec2Client:     ec2.NewFromConfig(cfg),
 					TaggingClient: resourcegroupstaggingapi.NewFromConfig(cfg),
@@ -123,12 +123,13 @@ export BASTION_IP=%s
 		prj.SshConfig.PrivateKeyPath,
 		prj.SshConfig.BastionExternalIp)
 }
-func (p *AwsDeployProvider) ListDeployments() (l.LogMsg, error) {
+func (p *AwsDeployProvider) ListDeployments() (map[string]int, l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 	resources, err := cldaws.GetResourcesByTag(p.GetCtx().Aws.TaggingClient, p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Aws.Config.Region,
-		[]taggingTypes.TagFilter{{Key: aws.String(cldaws.DeploymentOperatorTagName), Values: []string{cldaws.DeploymentOperatorTagValue}}}, false)
+		[]taggingTypes.TagFilter{{Key: aws.String(cld.DeploymentOperatorTagName), Values: []string{cld.DeploymentOperatorTagValue}}}, false)
 	if err != nil {
-		return lb.Complete(err)
+		logMsg, err := lb.Complete(err)
+		return nil, logMsg, err
 	}
 	deploymentResCount := map[string]int{}
 	for _, res := range resources {
@@ -138,37 +139,20 @@ func (p *AwsDeployProvider) ListDeployments() (l.LogMsg, error) {
 			deploymentResCount[res.DeploymentName] = 1
 		}
 	}
-	deploymentStrings := make([]string, len(deploymentResCount))
-	deploymentIdx := 0
-	totalResourceCount := 0
-	for deploymentName, deploymentResCount := range deploymentResCount {
-		deploymentStrings[deploymentIdx] = fmt.Sprintf("%s,%d", deploymentName, deploymentResCount)
-		deploymentIdx++
-		totalResourceCount += deploymentResCount
-	}
-	fmt.Printf("%s\n", strings.Join(deploymentStrings, "\n"))
-	fmt.Printf("Deployments: %d, resources: %d\n", len(deploymentResCount), totalResourceCount)
-	return lb.Complete(nil)
+	logMsg, _ := lb.Complete(nil)
+	return deploymentResCount, logMsg, nil
 }
 
-func (p *AwsDeployProvider) ListDeploymentResources() (l.LogMsg, error) {
+func (p *AwsDeployProvider) ListDeploymentResources() ([]*cld.Resource, l.LogMsg, error) {
 	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
 	resources, err := cldaws.GetResourcesByTag(p.GetCtx().Aws.TaggingClient, p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Aws.Config.Region,
 		[]taggingTypes.TagFilter{
-			{Key: aws.String(cldaws.DeploymentOperatorTagName), Values: []string{cldaws.DeploymentOperatorTagValue}},
-			{Key: aws.String(cldaws.DeploymentNameTagName), Values: []string{p.Ctx.Project.DeploymentName}}}, true)
+			{Key: aws.String(cld.DeploymentOperatorTagName), Values: []string{cld.DeploymentOperatorTagValue}},
+			{Key: aws.String(cld.DeploymentNameTagName), Values: []string{p.Ctx.Project.DeploymentName}}}, true)
 	if err != nil {
-		return lb.Complete(err)
+		logMsg, err := lb.Complete(err)
+		return nil, logMsg, err
 	}
-	resourceStrings := make([]string, len(resources))
-	activeCount := 0
-	for resIdx, res := range resources {
-		resourceStrings[resIdx] = res.String()
-		if res.BilledState != cldaws.ResourceBilledStateTerminated {
-			activeCount++
-		}
-	}
-	fmt.Printf("%s\n", strings.Join(resourceStrings, "\n"))
-	fmt.Printf("Total: %d, potentially billed: %d\n", len(resources), activeCount)
-	return lb.Complete(nil)
+	logMsg, _ := lb.Complete(nil)
+	return resources, logMsg, nil
 }

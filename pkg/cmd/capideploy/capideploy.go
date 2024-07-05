@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/capillariesio/capillaries-deploy/pkg/cld"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 	"github.com/capillariesio/capillaries-deploy/pkg/prj"
 	"github.com/capillariesio/capillaries-deploy/pkg/provider"
@@ -259,14 +260,12 @@ func main() {
 	var prjErr error
 
 	singleThreadCommands := map[string]SingleThreadCmdHandler{
-		CmdListDeployments:         nil,
-		CmdListDeploymentResources: nil,
-		CmdCreateFloatingIps:       nil,
-		CmdDeleteFloatingIps:       nil,
-		CmdCreateSecurityGroups:    nil,
-		CmdDeleteSecurityGroups:    nil,
-		CmdCreateNetworking:        nil,
-		CmdDeleteNetworking:        nil,
+		CmdCreateFloatingIps:    nil,
+		CmdDeleteFloatingIps:    nil,
+		CmdCreateSecurityGroups: nil,
+		CmdDeleteSecurityGroups: nil,
+		CmdCreateNetworking:     nil,
+		CmdDeleteNetworking:     nil,
 	}
 
 	if _, ok := singleThreadCommands[os.Args[1]]; ok {
@@ -287,8 +286,43 @@ func main() {
 	if deployProviderErr != nil {
 		log.Fatalf(deployProviderErr.Error())
 	}
-	singleThreadCommands[CmdListDeployments] = deployProvider.ListDeployments
-	singleThreadCommands[CmdListDeploymentResources] = deployProvider.ListDeploymentResources
+
+	if os.Args[1] == CmdListDeployments {
+		mapResourceCount, logMsg, err := deployProvider.ListDeployments()
+		fmt.Println(logMsg)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+
+		deploymentStrings := make([]string, len(mapResourceCount))
+		deploymentIdx := 0
+		totalResourceCount := 0
+		for deploymentName, deploymentResCount := range mapResourceCount {
+			deploymentStrings[deploymentIdx] = fmt.Sprintf("%s,%d", deploymentName, deploymentResCount)
+			deploymentIdx++
+			totalResourceCount += deploymentResCount
+		}
+		fmt.Printf("%s\n", strings.Join(deploymentStrings, "\n"))
+		fmt.Printf("Deployments: %d, resources: %d\n", len(mapResourceCount), totalResourceCount)
+		os.Exit(0)
+	} else if os.Args[1] == CmdListDeploymentResources {
+		resources, logMsg, err := deployProvider.ListDeploymentResources()
+		fmt.Println(logMsg)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+		resourceStrings := make([]string, len(resources))
+		activeCount := 0
+		for resIdx, res := range resources {
+			resourceStrings[resIdx] = res.String()
+			if res.BilledState != cld.ResourceBilledStateTerminated {
+				activeCount++
+			}
+		}
+		fmt.Printf("%s\n", strings.Join(resourceStrings, "\n"))
+		fmt.Printf("Total: %d, potentially billed: %d\n", len(resources), activeCount)
+	}
+
 	singleThreadCommands[CmdCreateFloatingIps] = deployProvider.CreateFloatingIps
 	singleThreadCommands[CmdDeleteFloatingIps] = deployProvider.DeleteFloatingIps
 	singleThreadCommands[CmdCreateSecurityGroups] = deployProvider.CreateSecurityGroups
