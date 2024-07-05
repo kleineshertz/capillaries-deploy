@@ -11,42 +11,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	tagging "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	taggingTypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
+	"github.com/capillariesio/capillaries-deploy/pkg/cld"
 	"github.com/capillariesio/capillaries-deploy/pkg/l"
 )
 
-type ResourceBilledState string
-
-const (
-	ResourceBilledStateUnknown    ResourceBilledState = "unknown"
-	ResourceBilledStateActive     ResourceBilledState = "active"
-	ResourceBilledStateTerminated ResourceBilledState = "terminated"
-)
-
-const DeploymentNameTagName string = "DeploymentName"
-const DeploymentOperatorTagName string = "DeploymentOperator"
-const DeploymentOperatorTagValue string = "capideploy"
-
-type Resource struct {
-	DeploymentName string
-	Svc            string
-	Type           string
-	Id             string
-	Name           string
-	State          string
-	BilledState    ResourceBilledState
-}
-
-func (r *Resource) String() string {
-	return fmt.Sprintf("%s, %s,%s,%s,%s,%s,%s", r.DeploymentName, r.Svc, r.Type, r.Name, r.Id, r.State, r.BilledState)
-}
-
-func arnToResource(arn string) Resource {
-	r := Resource{
+func arnToResource(arn string) cld.Resource {
+	r := cld.Resource{
 		Svc:         "unknown",
 		Type:        "unknown",
 		Id:          "unknown",
 		State:       "unknown",
-		BilledState: ResourceBilledStateUnknown,
+		BilledState: cld.ResourceBilledStateUnknown,
 	}
 	s := strings.Split(arn, "/")
 	if len(s) >= 2 {
@@ -62,50 +37,50 @@ func arnToResource(arn string) Resource {
 	return r
 }
 
-func getInstanceBilledState(state types.InstanceStateName) ResourceBilledState {
+func getInstanceBilledState(state types.InstanceStateName) cld.ResourceBilledState {
 	if state == types.InstanceStateNamePending || state == types.InstanceStateNameRunning {
-		return ResourceBilledStateActive
+		return cld.ResourceBilledStateActive
 	} else {
-		return ResourceBilledStateTerminated
+		return cld.ResourceBilledStateTerminated
 	}
 }
 
-func getVolumeBilledState(state types.VolumeState) ResourceBilledState {
+func getVolumeBilledState(state types.VolumeState) cld.ResourceBilledState {
 	if state == types.VolumeStateAvailable || state == types.VolumeStateCreating || state == types.VolumeStateInUse {
-		return ResourceBilledStateActive
+		return cld.ResourceBilledStateActive
 	} else {
-		return ResourceBilledStateTerminated
+		return cld.ResourceBilledStateTerminated
 	}
 }
 
-func getNatGatewayBilledState(state types.NatGatewayState) ResourceBilledState {
+func getNatGatewayBilledState(state types.NatGatewayState) cld.ResourceBilledState {
 	if state == types.NatGatewayStatePending || state == types.NatGatewayStateAvailable {
-		return ResourceBilledStateActive
+		return cld.ResourceBilledStateActive
 	} else {
-		return ResourceBilledStateTerminated
+		return cld.ResourceBilledStateTerminated
 	}
 }
 
-func getVpcBilledState(state types.VpcState) ResourceBilledState {
+func getVpcBilledState(state types.VpcState) cld.ResourceBilledState {
 	if state == types.VpcStatePending || state == types.VpcStateAvailable {
-		return ResourceBilledStateActive
+		return cld.ResourceBilledStateActive
 	} else {
-		return ResourceBilledStateTerminated
+		return cld.ResourceBilledStateTerminated
 	}
 }
 
-func getImageBilledState(state types.ImageState) ResourceBilledState {
+func getImageBilledState(state types.ImageState) cld.ResourceBilledState {
 	if state == types.ImageStateAvailable || state == types.ImageStateDisabled || state == types.ImageStateError || state == types.ImageStatePending || state == types.ImageStateTransient {
-		return ResourceBilledStateActive
+		return cld.ResourceBilledStateActive
 	} else {
-		return ResourceBilledStateTerminated
+		return cld.ResourceBilledStateTerminated
 	}
 }
-func getSnapshotBilledState(_ types.SnapshotState) ResourceBilledState {
-	return ResourceBilledStateActive
+func getSnapshotBilledState(_ types.SnapshotState) cld.ResourceBilledState {
+	return cld.ResourceBilledStateActive
 }
 
-func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource) (string, ResourceBilledState, error) {
+func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *cld.Resource) (string, cld.ResourceBilledState, error) {
 	switch r.Svc {
 	case "ec2":
 		switch r.Type {
@@ -114,7 +89,7 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			if err != nil {
 				return "", "", err
 			}
-			return *out.Addresses[0].PublicIp, ResourceBilledStateActive, nil
+			return *out.Addresses[0].PublicIp, cld.ResourceBilledStateActive, nil
 		case "vpc":
 			out, err := ec2Client.DescribeVpcs(goCtx, &ec2.DescribeVpcsInput{VpcIds: []string{r.Id}})
 			if err != nil {
@@ -126,36 +101,36 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			if err != nil {
 				return "", "", err
 			}
-			return string(out.Subnets[0].State), ResourceBilledStateActive, nil
+			return string(out.Subnets[0].State), cld.ResourceBilledStateActive, nil
 		case "security-group":
 			_, err := ec2Client.DescribeSecurityGroups(goCtx, &ec2.DescribeSecurityGroupsInput{GroupIds: []string{r.Id}})
 			if err != nil {
 				return "", "", err
 			}
-			return "present", ResourceBilledStateActive, nil
+			return "present", cld.ResourceBilledStateActive, nil
 		case "route-table":
 			out, err := ec2Client.DescribeRouteTables(goCtx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", ResourceBilledStateTerminated, nil
+					return "doesnotexist", cld.ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
-			return fmt.Sprintf("%droutes", len(out.RouteTables[0].Routes)), ResourceBilledStateActive, nil
+			return fmt.Sprintf("%droutes", len(out.RouteTables[0].Routes)), cld.ResourceBilledStateActive, nil
 		case "instance":
 			out, err := ec2Client.DescribeInstances(goCtx, &ec2.DescribeInstancesInput{InstanceIds: []string{r.Id}})
 			if err != nil {
 				return "", "", err
 			}
 			if len(out.Reservations) == 0 || len(out.Reservations[0].Instances) == 0 {
-				return "notfound", ResourceBilledStateTerminated, nil
+				return "notfound", cld.ResourceBilledStateTerminated, nil
 			}
 			return string(out.Reservations[0].Instances[0].State.Name), getInstanceBilledState(out.Reservations[0].Instances[0].State.Name), nil
 		case "volume":
 			out, err := ec2Client.DescribeVolumes(goCtx, &ec2.DescribeVolumesInput{VolumeIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", ResourceBilledStateTerminated, nil
+					return "doesnotexist", cld.ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
@@ -164,7 +139,7 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			out, err := ec2Client.DescribeNatGateways(goCtx, &ec2.DescribeNatGatewaysInput{NatGatewayIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "was not found") {
-					return "notfound", ResourceBilledStateTerminated, nil
+					return "notfound", cld.ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
@@ -173,16 +148,16 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			out, err := ec2Client.DescribeInternetGateways(goCtx, &ec2.DescribeInternetGatewaysInput{InternetGatewayIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", ResourceBilledStateTerminated, nil
+					return "doesnotexist", cld.ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
-			return fmt.Sprintf("%dattachments", len(out.InternetGateways[0].Attachments)), ResourceBilledStateActive, nil
+			return fmt.Sprintf("%dattachments", len(out.InternetGateways[0].Attachments)), cld.ResourceBilledStateActive, nil
 		case "image":
 			out, err := ec2Client.DescribeImages(goCtx, &ec2.DescribeImagesInput{ImageIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", ResourceBilledStateTerminated, nil
+					return "doesnotexist", cld.ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
@@ -192,7 +167,7 @@ func getResourceState(ec2Client *ec2.Client, goCtx context.Context, r *Resource)
 			out, err := ec2Client.DescribeSnapshots(goCtx, &ec2.DescribeSnapshotsInput{SnapshotIds: []string{r.Id}})
 			if err != nil {
 				if strings.Contains(err.Error(), "does not exist") {
-					return "doesnotexist", ResourceBilledStateTerminated, nil
+					return "doesnotexist", cld.ResourceBilledStateTerminated, nil
 				}
 				return "", "", err
 			}
@@ -216,15 +191,15 @@ func getResourceDeploymentNameAndNameTags(ec2Client *ec2.Client, goCtx context.C
 	for _, tagDesc := range out.Tags {
 		if *tagDesc.Key == "Name" {
 			resourceNameTagValue = *tagDesc.Value
-		} else if *tagDesc.Key == DeploymentNameTagName {
+		} else if *tagDesc.Key == cld.DeploymentNameTagName {
 			deploymentNameTagValue = *tagDesc.Value
 		}
 	}
 	return deploymentNameTagValue, resourceNameTagValue, nil
 }
 
-func GetResourcesByTag(tClient *tagging.Client, ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, region string, tagFilters []taggingTypes.TagFilter, readState bool) ([]*Resource, error) {
-	resources := make([]*Resource, 0)
+func GetResourcesByTag(tClient *tagging.Client, ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, region string, tagFilters []taggingTypes.TagFilter, readState bool) ([]*cld.Resource, error) {
+	resources := make([]*cld.Resource, 0)
 	paginationToken := ""
 	for {
 		out, err := tClient.GetResources(goCtx, &tagging.GetResourcesInput{
@@ -232,7 +207,7 @@ func GetResourcesByTag(tClient *tagging.Client, ec2Client *ec2.Client, goCtx con
 			PaginationToken:  &paginationToken,
 			TagFilters:       tagFilters})
 		if err != nil {
-			return []*Resource{}, err
+			return []*cld.Resource{}, err
 		}
 
 		for _, rtMapping := range out.ResourceTagMappingList {
