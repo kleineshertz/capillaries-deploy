@@ -15,13 +15,13 @@ const DeploymentOperatorTagName string = "DeploymentOperator"
 const DeploymentOperatorTagValue string = "capideploy"
 
 type Resource struct {
-	DeploymentName string
-	Svc            string
-	Type           string
-	Id             string
-	Name           string
-	State          string
-	BilledState    ResourceBilledState
+	DeploymentName string              `json:"deployment_name"`
+	Svc            string              `json:"svc"`
+	Type           string              `json:"type"`
+	Id             string              `json:"id"`
+	Name           string              `json:"name"`
+	State          string              `json:"state"`
+	BilledState    ResourceBilledState `json:"billed_state"`
 }
 
 func (r *Resource) String() string {

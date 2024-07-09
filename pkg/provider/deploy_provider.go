@@ -65,8 +65,8 @@ func (p *AwsDeployProvider) GetCtx() *DeployCtx {
 }
 
 type AssumeRoleConfig struct {
-	RoleArn    string
-	ExternalId string
+	RoleArn    string `json:"role_arn"`
+	ExternalId string `json:"external_id"`
 }
 
 func DeployProviderFactory(project *prj.Project, goCtx context.Context, assumeRoleCfg *AssumeRoleConfig, isVerbose bool) (DeployProvider, error) {
