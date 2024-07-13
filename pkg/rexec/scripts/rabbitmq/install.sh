@@ -2,7 +2,7 @@ sudo DEBIAN_FRONTEND=noninteractive add-apt-repository -y ppa:rabbitmq/rabbitmq-
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 
 # Erlang from https://launchpad.net/~rabbitmq/+archive/ubuntu/rabbitmq-erlang
-ERLANG_VER=1:26.2.5-1rmq1ppa1~ubuntu24.04.1
+ERLANG_VER=1:26.2.5.2-1rmq1ppa1~ubuntu24.04.1
 sudo DEBIAN_FRONTEND=noninteractive apt-get -y install erlang-base=$ERLANG_VER \
     erlang-asn1=$ERLANG_VER erlang-crypto=$ERLANG_VER erlang-eldap=$ERLANG_VER erlang-ftp=$ERLANG_VER erlang-inets=$ERLANG_VER \
     erlang-mnesia=$ERLANG_VER erlang-os-mon=$ERLANG_VER erlang-parsetools=$ERLANG_VER erlang-public-key=$ERLANG_VER \

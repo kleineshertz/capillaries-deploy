@@ -73,29 +73,44 @@ func ensureNatGatewayAndRoutePrivateSubnet(ec2Client *ec2.Client, goCtx context.
 		}
 	}
 
+	routeTableId, associatedVpcId, associatedSubnetId, err := cldaws.GetRouteTableByName(ec2Client, goCtx, lb, privateSubnetDef.RouteTableToNatgwName)
+	if err != nil {
+		return err
+	}
+
+	if associatedVpcId != "" && associatedVpcId != networkId {
+		return fmt.Errorf("cannot use existing route table %s(%s), it's already associated with wrong network id %s", privateSubnetDef.RouteTableToNatgwName, routeTableId, associatedVpcId)
+	}
+
+	if associatedSubnetId != "" && associatedSubnetId != privateSubnetId {
+		return fmt.Errorf("cannot use existing route table %s(%s), it's already associated with wrong subnet id %s", privateSubnetDef.RouteTableToNatgwName, routeTableId, associatedSubnetId)
+	}
+
 	// Create new route table id for this vpc
 
-	routeTableId, err := cldaws.CreateRouteTableForVpc(ec2Client, goCtx, tags, lb, privateSubnetDef.RouteTableToNatgwName, networkId)
-	if err != nil {
-		return err
+	if routeTableId == "" {
+		routeTableId, err = cldaws.CreateRouteTableForVpc(ec2Client, goCtx, tags, lb, privateSubnetDef.RouteTableToNatgwName, networkId)
+		if err != nil {
+			return err
+		}
+
+		// Associate this route table with the private subnet
+
+		rtAssocId, err := cldaws.AssociateRouteTableWithSubnet(ec2Client, goCtx, lb, routeTableId, privateSubnetId)
+		if err != nil {
+			return err
+		}
+
+		lb.Add(fmt.Sprintf("associated route table %s with private subnet %s: %s", routeTableId, privateSubnetId, rtAssocId))
+
+		// Add a record to a route table: tell all outbound 0.0.0.0/0 traffic to go through this nat gateway:
+
+		if err := cldaws.CreateNatGatewayRoute(ec2Client, goCtx, lb, routeTableId, "0.0.0.0/0", natGatewayId); err != nil {
+			return err
+		}
+
+		lb.Add(fmt.Sprintf("route table %s in private subnet %s points to nat gateway %s", routeTableId, privateSubnetId, natGatewayId))
 	}
-
-	// Associate this route table with the private subnet
-
-	rtAssocId, err := cldaws.AssociateRouteTableWithSubnet(ec2Client, goCtx, lb, routeTableId, privateSubnetId)
-	if err != nil {
-		return err
-	}
-
-	lb.Add(fmt.Sprintf("associated route table %s with private subnet %s: %s", routeTableId, privateSubnetId, rtAssocId))
-
-	// Add a record to a route table: tell all outbound 0.0.0.0/0 traffic to go through this nat gateway:
-
-	if err := cldaws.CreateNatGatewayRoute(ec2Client, goCtx, lb, routeTableId, "0.0.0.0/0", natGatewayId); err != nil {
-		return err
-	}
-
-	lb.Add(fmt.Sprintf("route table %s in private subnet %s points to nat gateway %s", routeTableId, privateSubnetId, natGatewayId))
 
 	return nil
 }
@@ -140,7 +155,7 @@ func ensureInternetGatewayAndRoutePublicSubnet(ec2Client *ec2.Client, goCtx cont
 
 	// Obtain route table id for this vpc (it was automatically created for us and marked as 'main')
 
-	routeTableId, err := cldaws.GetVpcDefaultRouteTable(ec2Client, goCtx, lb, networkId)
+	routeTableId, associatedSubnetId, err := cldaws.GetVpcDefaultRouteTable(ec2Client, goCtx, lb, networkId)
 	if err != nil {
 		return err
 	}
@@ -152,13 +167,19 @@ func ensureInternetGatewayAndRoutePublicSubnet(ec2Client *ec2.Client, goCtx cont
 		return err
 	}
 
-	// Associate this default (main) route table with the public subnet
+	// Associate this default (main) route table with the public subnet if needed
 
-	assocId, err := cldaws.AssociateRouteTableWithSubnet(ec2Client, goCtx, lb, routeTableId, publicSubnetId)
-	if err != nil {
-		return err
+	if associatedSubnetId != "" && associatedSubnetId != publicSubnetId {
+		return fmt.Errorf("cannot asociate default route table %s with public subnet %s because it's already associated with %s", routeTableId, publicSubnetId, associatedSubnetId)
 	}
-	lb.Add(fmt.Sprintf("associated route table %s with public subnet %s: %s", routeTableId, publicSubnetId, assocId))
+
+	if associatedSubnetId == "" {
+		assocId, err := cldaws.AssociateRouteTableWithSubnet(ec2Client, goCtx, lb, routeTableId, publicSubnetId)
+		if err != nil {
+			return err
+		}
+		lb.Add(fmt.Sprintf("associated route table %s with public subnet %s: %s", routeTableId, publicSubnetId, assocId))
+	}
 
 	// Add a record to a route table: tell all outbound 0.0.0.0/0 traffic to go through this internet gateway:
 
@@ -246,7 +267,7 @@ func checkAndDeleteAwsVpcWithRouteTable(ec2Client *ec2.Client, goCtx context.Con
 	}
 
 	// Delete the route table pointing to natgw (if we don't, AWS will consider them as dependencies and will not delete vpc)
-	foundRouteTableId, foundAttachedVpcId, err := cldaws.GetRouteTableByName(ec2Client, goCtx, lb, privateSubnetRouteTableToNatgwName)
+	foundRouteTableId, foundAttachedVpcId, _, err := cldaws.GetRouteTableByName(ec2Client, goCtx, lb, privateSubnetRouteTableToNatgwName)
 	if err != nil {
 		return err
 	}

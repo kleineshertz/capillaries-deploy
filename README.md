@@ -292,12 +292,15 @@ They will tell capideploy to assume the specified role before performing any act
 
 Sample .rc file to run before Capildeploy contains variables used in the .jsonnet file:
 ```
+# Variables used in jsonnet
+
 # SSH access to EC2 instances
 export CAPIDEPLOY_SSH_USER=ubuntu
 # Name of the keypair stored at AWS
 export CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME=sampledeployment005-root-key
-# Exported PEM file with private SSH key from the AWS keypair
-export CAPIDEPLOY_SSH_PRIVATE_KEY_PATH=/home/johndoe/.ssh/sampledeployment005_rsa
+# Exported PEM file with private SSH key from the AWS keypair, either a file or a variable
+# export CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_PRIVATE_KEY_OR_PATH=/home/johndoe/.ssh/sampledeployment005_rsa
+export CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_PRIVATE_KEY_OR_PATH="-----BEGIN..."
 
 # NGINX IP address filter: your IP address(es) or cidr(s), for example: "135.23.0.0/16,136.104.0.21"
 export CAPIDEPLOY_BASTION_ALLOWED_IPS="..."
@@ -319,7 +322,21 @@ export CAPIDEPLOY_RABBITMQ_USER_PASS=...
 export CAPIDEPLOY_S3_AWS_DEFAULT_REGION=us-east-1
 
 # Capideploy will use this instance profile when creating instances that need access to S3 bucket
-export CAPIDEPLOY_INSTANCE_PROFILE_WITH_S3_ACCESS=RoleAccessCapillariesTestbucket
+export CAPIDEPLOY_AWS_INSTANCE_PROFILE_WITH_S3_ACCESS=RoleAccessCapillariesTestbucket
+
+# Variables not used in jsonnet, but used by capideploy binaries. It's just more convenient to use env variables instead of cmd parameters
+
+# ARN of the role to assume, if needed. If empty all resources will be created in the account of the AWS_ACCESS_KEY_ID below
+export CAPIDEPLOY_AWS_ROLE_TO_ASSUME_ARN="arn:aws:iam::<customer account id>:role/RoleCapideployOperator"
+# External id of the role to assume, can be empty. If CAPIDEPLOY_AWS_ROLE_TO_ASSUME_ARN is specified, it is recommended to use external id
+export CAPIDEPLOY_AWS_ROLE_TO_ASSUME_EXTERNAL_ID="..."
+
+# Variables not used in jsonnet, but used by AWS SDK called from capideploy binaries
+
+# arn:aws:iam::<saas account id>:user/UserSaasCapideployOperator
+export AWS_ACCESS_KEY_ID=AK...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_DEFAULT_REGION=us-east-1
 ```
 
 # Create deployment

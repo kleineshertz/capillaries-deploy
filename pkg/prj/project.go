@@ -150,10 +150,7 @@ type UserDef struct {
 	Name          string `json:"name"`
 	PublicKeyPath string `json:"public_key_path"`
 }
-type PrivateKeyDef struct {
-	Name           string `json:"name"`
-	PrivateKeyPath string `json:"private_key_path"`
-}
+
 type InstanceDef struct {
 	Purpose  string `json:"purpose"`
 	InstName string `json:"inst_name"`

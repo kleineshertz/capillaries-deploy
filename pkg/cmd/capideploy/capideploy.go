@@ -102,10 +102,8 @@ func main() {
 
 	commonArgs := flag.NewFlagSet("run prj args", flag.ExitOnError)
 	argPrjFile := commonArgs.String("p", "capideploy.jsonnet", "Capideploy project jsonnet file path")
-	argAssumeRole := commonArgs.String("r", "", "A role from another AWS account to assume, act like a third-party service")
-	argAssumeRoleExternalId := commonArgs.String("e", "", "When a role from another AWS account is assumed, use this external-id (optional, but encouraged)")
 	argVerbosity := commonArgs.Bool("v", false, "Verbose debug output")
-	argNumberOfRepetitions := commonArgs.Int("n", 1, "Number of repetitions")
+	argNumberOfRepetitions := commonArgs.Int("n", 50, "Number of repetitions")
 	argShowProjectDetails := commonArgs.Bool("s", false, "Show project details (may contain sensitive info)")
 	argIgnoreAttachedVolumes := commonArgs.Bool("i", false, "Ignore attached volumes on instance delete")
 
@@ -149,7 +147,11 @@ func main() {
 		}
 	}(cOut, cErr, cDone)
 
-	deployProvider, deployProviderErr := provider.DeployProviderFactory(project, context.TODO(), &provider.AssumeRoleConfig{RoleArn: *argAssumeRole, ExternalId: *argAssumeRoleExternalId}, *argVerbosity, cOut, cErr)
+	deployProvider, deployProviderErr := provider.DeployProviderFactory(project, context.TODO(),
+		&provider.AssumeRoleConfig{
+			RoleArn:    os.Getenv("CAPIDEPLOY_AWS_ROLE_TO_ASSUME_ARN"),
+			ExternalId: os.Getenv("CAPIDEPLOY_AWS_ROLE_TO_ASSUME_EXTERNAL_ID")},
+		*argVerbosity, cOut, cErr)
 	if deployProviderErr != nil {
 		cDone <- 0
 		log.Fatalf(deployProviderErr.Error())
@@ -157,6 +159,11 @@ func main() {
 
 	if len(os.Args) >= 3 {
 		nicknames = os.Args[2]
+	}
+
+	if nicknames == "" && provider.IsCmdRequiresNicknames(cmd) {
+		usage(commonArgs)
+		log.Fatalf("nicknames argument expected but missing")
 	}
 
 	var finalErr error

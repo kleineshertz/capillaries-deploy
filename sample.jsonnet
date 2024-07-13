@@ -102,7 +102,7 @@
     // external_ip_address: '',
     port: 22,
     user: '{CAPIDEPLOY_SSH_USER}',
-    private_key_path: '{CAPIDEPLOY_SSH_PRIVATE_KEY_PATH}',
+    private_key_or_path: '{CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_PRIVATE_KEY_OR_PATH}',
   },
   timeouts: {
   },
@@ -281,14 +281,14 @@
       image_id: instance_image_id,
       security_group_name: $.security_groups.bastion.name,
       subnet_name: $.network.public_subnet.name,
-      associated_instance_profile: '{CAPIDEPLOY_INSTANCE_PROFILE_WITH_S3_ACCESS}',
+      associated_instance_profile: '{CAPIDEPLOY_AWS_INSTANCE_PROFILE_WITH_S3_ACCESS}',
       volumes: {
         'log': {
           name: dep_name + '_log',
           availability_zone: volume_availability_zone,
           mount_point: '/mnt/capi_log',
           size: 10,
-          type: 'gp2', // No need for a top-spedd drive
+          type: 'gp2', // No need for a top-speed drive
           permissions: 777,
           owner: $.ssh_config.user,
         },
@@ -489,7 +489,7 @@
       image_id: instance_image_id,
       security_group_name: $.security_groups.internal.name,
       subnet_name: $.network.private_subnet.name,
-      associated_instance_profile: '{CAPIDEPLOY_INSTANCE_PROFILE_WITH_S3_ACCESS}',
+      associated_instance_profile: '{CAPIDEPLOY_AWS_INSTANCE_PROFILE_WITH_S3_ACCESS}',
       service: {
         env: {
           INTERNAL_BASTION_IP: internal_bastion_ip,

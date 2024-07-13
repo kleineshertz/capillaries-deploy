@@ -42,7 +42,7 @@ func isAllNodesJoined(strOut string, instances map[string]*prj.InstanceDef) erro
 	for _, iDef := range instances {
 		if iDef.Purpose == string(prj.InstancePurposeCassandra) {
 			re := regexp.MustCompile(`UN  ` + iDef.IpAddress)
-			matches := re.FindAllString(strOut, 0)
+			matches := re.FindAllString(strOut, -1)
 			if len(matches) == 0 {
 				missingIps = append(missingIps, iDef.IpAddress)
 			}

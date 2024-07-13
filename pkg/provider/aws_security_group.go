@@ -21,12 +21,12 @@ func createAwsSecurityGroup(ec2Client *ec2.Client, goCtx context.Context, tags m
 		if err != nil {
 			return err
 		}
-	}
 
-	for _, rule := range sgDef.Rules {
-		err := cldaws.AuthorizeSecurityGroupIngress(ec2Client, goCtx, lb, groupId, rule.Protocol, int32(rule.Port), rule.RemoteIp)
-		if err != nil {
-			return err
+		for _, rule := range sgDef.Rules {
+			err := cldaws.AuthorizeSecurityGroupIngress(ec2Client, goCtx, lb, groupId, rule.Protocol, int32(rule.Port), rule.RemoteIp)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

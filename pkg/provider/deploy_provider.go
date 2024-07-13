@@ -321,6 +321,15 @@ func execSimpleParallelCmd(deployProvider deployProviderImpl, cmd string, nickna
 	}
 
 	if cmdHandler, ok := singleThreadNoResultCommands[cmd]; ok {
+		if cmd == CmdCheckCassStatus {
+			// We need Cassandra node ip addresses populated
+			logMsgBastionIp, err := deployProvider.PopulateInstanceExternalAddressByName()
+			cOut <- string(logMsgBastionIp)
+			if err != nil {
+				cErr <- err.Error()
+				return err
+			}
+		}
 		errorsExpected = 1
 		errChan = make(chan error, errorsExpected)
 		sem <- 1

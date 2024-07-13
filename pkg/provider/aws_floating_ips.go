@@ -40,7 +40,7 @@ Host %s
 User %s
 StrictHostKeyChecking=no
 UserKnownHostsFile=/dev/null
-IdentityFile %s
+IdentityFile <private key path>
 
 Also, you may find it convenient to use in your commands:
 
@@ -49,7 +49,6 @@ export BASTION_IP=%s
 `,
 		p.DeployCtx.Project.SshConfig.BastionExternalIp,
 		p.DeployCtx.Project.SshConfig.User,
-		p.DeployCtx.Project.SshConfig.PrivateKeyPath,
 		p.DeployCtx.Project.SshConfig.BastionExternalIp))
 
 	natgwIpName := p.DeployCtx.Project.Network.PublicSubnet.NatGatewayExternalIpName

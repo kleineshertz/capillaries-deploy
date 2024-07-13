@@ -304,17 +304,22 @@ func CreateRouteTableForVpc(ec2Client *ec2.Client, goCtx context.Context, tags m
 	return *out.RouteTable.RouteTableId, nil
 }
 
-func GetRouteTableByName(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableName string) (string, string, error) {
+func GetRouteTableByName(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableName string) (string, string, string, error) {
 	out, err := ec2Client.DescribeRouteTables(goCtx, &ec2.DescribeRouteTablesInput{
 		Filters: []types.Filter{{Name: aws.String("tag:Name"), Values: []string{routeTableName}}}})
 	lb.AddObject(fmt.Sprintf("DescribeRouteTable(tag:Name=%s)", routeTableName), out)
 	if err != nil {
-		return "", "", fmt.Errorf("cannot find route table %s: %s", routeTableName, err.Error())
+		return "", "", "", fmt.Errorf("cannot find route table %s: %s", routeTableName, err.Error())
 	}
 	if len(out.RouteTables) == 0 {
-		return "", "", nil
+		return "", "", "", nil
 	}
-	return *out.RouteTables[0].RouteTableId, *out.RouteTables[0].VpcId, nil
+
+	var associatedSubnetId string
+	if len(out.RouteTables[0].Associations) > 0 {
+		associatedSubnetId = *out.RouteTables[0].Associations[0].SubnetId
+	}
+	return *out.RouteTables[0].RouteTableId, *out.RouteTables[0].VpcId, associatedSubnetId, nil
 }
 
 func DeleteRouteTable(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, routeTableId string) error {
@@ -434,9 +439,9 @@ func DetachInternetGatewayFromVpc(ec2Client *ec2.Client, goCtx context.Context, 
 	return nil
 }
 
-func GetVpcDefaultRouteTable(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcId string) (string, error) {
+func GetVpcDefaultRouteTable(ec2Client *ec2.Client, goCtx context.Context, lb *l.LogBuilder, vpcId string) (string, string, error) {
 	if vpcId == "" {
-		return "", fmt.Errorf("empty parameter not allowed: vpcId (%s)", vpcId)
+		return "", "", fmt.Errorf("empty parameter not allowed: vpcId (%s)", vpcId)
 	}
 	out, err := ec2Client.DescribeRouteTables(goCtx, &ec2.DescribeRouteTablesInput{
 		Filters: []types.Filter{
@@ -444,11 +449,16 @@ func GetVpcDefaultRouteTable(ec2Client *ec2.Client, goCtx context.Context, lb *l
 			{Name: aws.String("vpc-id"), Values: []string{vpcId}}}})
 	lb.AddObject(fmt.Sprintf("DescribeRouteTables(association.main=true,vpc-id=%s)", vpcId), out)
 	if err != nil {
-		return "", fmt.Errorf("cannot obtain default (main) route table for vpc %s: %s", vpcId, err.Error())
+		return "", "", fmt.Errorf("cannot obtain default (main) route table for vpc %s: %s", vpcId, err.Error())
 	}
 	if len(out.RouteTables) == 0 {
-		return "", fmt.Errorf("cannot obtain default (main) route table for vpc %s: no route tables returned", vpcId)
+		return "", "", fmt.Errorf("cannot obtain default (main) route table for vpc %s: no route tables returned", vpcId)
 	}
 
-	return *out.RouteTables[0].RouteTableId, nil
+	var associatedSubnetId string
+	if len(out.RouteTables[0].Associations) > 0 && out.RouteTables[0].Associations[0].SubnetId != nil {
+		associatedSubnetId = *out.RouteTables[0].Associations[0].SubnetId
+	}
+
+	return *out.RouteTables[0].RouteTableId, associatedSubnetId, nil
 }
