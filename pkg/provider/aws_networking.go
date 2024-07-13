@@ -263,36 +263,36 @@ func checkAndDeleteAwsVpcWithRouteTable(ec2Client *ec2.Client, goCtx context.Con
 }
 
 func (p *AwsDeployProvider) CreateNetworking() (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
 
-	vpcId, err := ensureAwsVpc(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, &p.GetCtx().Project.Network, p.GetCtx().Project.Timeouts.CreateNetwork)
+	vpcId, err := ensureAwsVpc(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, p.DeployCtx.Tags, lb, &p.DeployCtx.Project.Network, p.DeployCtx.Project.Timeouts.CreateNetwork)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	privateSubnetId, err := ensureAwsPrivateSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, vpcId, &p.GetCtx().Project.Network.PrivateSubnet)
+	privateSubnetId, err := ensureAwsPrivateSubnet(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, p.DeployCtx.Tags, lb, vpcId, &p.DeployCtx.Project.Network.PrivateSubnet)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	publicSubnetId, err := ensureAwsPublicSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
-		vpcId, &p.GetCtx().Project.Network.PublicSubnet)
+	publicSubnetId, err := ensureAwsPublicSubnet(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, p.DeployCtx.Tags, lb,
+		vpcId, &p.DeployCtx.Project.Network.PublicSubnet)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	err = ensureInternetGatewayAndRoutePublicSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
-		p.GetCtx().Project.Network.Router.Name,
-		vpcId, publicSubnetId, &p.GetCtx().Project.Network.PublicSubnet)
+	err = ensureInternetGatewayAndRoutePublicSubnet(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, p.DeployCtx.Tags, lb,
+		p.DeployCtx.Project.Network.Router.Name,
+		vpcId, publicSubnetId, &p.DeployCtx.Project.Network.PublicSubnet)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	err = ensureNatGatewayAndRoutePrivateSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb,
+	err = ensureNatGatewayAndRoutePrivateSubnet(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, p.DeployCtx.Tags, lb,
 		vpcId,
-		publicSubnetId, &p.GetCtx().Project.Network.PublicSubnet,
-		privateSubnetId, &p.GetCtx().Project.Network.PrivateSubnet,
-		p.GetCtx().Project.Timeouts.CreateNatGateway)
+		publicSubnetId, &p.DeployCtx.Project.Network.PublicSubnet,
+		privateSubnetId, &p.DeployCtx.Project.Network.PrivateSubnet,
+		p.DeployCtx.Project.Timeouts.CreateNatGateway)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -301,29 +301,29 @@ func (p *AwsDeployProvider) CreateNetworking() (l.LogMsg, error) {
 }
 
 func (p *AwsDeployProvider) DeleteNetworking() (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
 
-	err := checkAndDeleteNatGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.PublicSubnet.NatGatewayName, p.GetCtx().Project.Timeouts.DeleteNatGateway)
+	err := checkAndDeleteNatGateway(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, p.DeployCtx.Project.Network.PublicSubnet.NatGatewayName, p.DeployCtx.Project.Timeouts.DeleteNatGateway)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	err = detachAndDeleteInternetGateway(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.Router.Name)
+	err = detachAndDeleteInternetGateway(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, p.DeployCtx.Project.Network.Router.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	err = deleteAwsSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.PublicSubnet.Name)
+	err = deleteAwsSubnet(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, p.DeployCtx.Project.Network.PublicSubnet.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	err = deleteAwsSubnet(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.PrivateSubnet.Name)
+	err = deleteAwsSubnet(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, p.DeployCtx.Project.Network.PrivateSubnet.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	err = checkAndDeleteAwsVpcWithRouteTable(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.Name, p.GetCtx().Project.Network.PrivateSubnet.Name, p.GetCtx().Project.Network.PrivateSubnet.RouteTableToNatgwName)
+	err = checkAndDeleteAwsVpcWithRouteTable(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, p.DeployCtx.Project.Network.Name, p.DeployCtx.Project.Network.PrivateSubnet.Name, p.DeployCtx.Project.Network.PrivateSubnet.RouteTableToNatgwName)
 	if err != nil {
 		return lb.Complete(err)
 	}

@@ -13,10 +13,10 @@ import (
 )
 
 func (p *AwsDeployProvider) CreateVolume(iNickname string, volNickname string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
 
-	volDef := p.GetCtx().Project.Instances[iNickname].Volumes[volNickname]
-	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)
+	volDef := p.DeployCtx.Project.Instances[iNickname].Volumes[volNickname]
+	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, volDef.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -26,7 +26,7 @@ func (p *AwsDeployProvider) CreateVolume(iNickname string, volNickname string) (
 		return lb.Complete(nil)
 	}
 
-	_, err = cldaws.CreateVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, volDef.Name, volDef.AvailabilityZone, int32(volDef.Size), volDef.Type)
+	_, err = cldaws.CreateVolume(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, p.DeployCtx.Tags, lb, volDef.Name, volDef.AvailabilityZone, int32(volDef.Size), volDef.Type)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -70,51 +70,48 @@ func awsFinalDeviceNameNitro(suggestedDeviceName string) string {
 }
 
 func (p *AwsDeployProvider) AttachVolume(iNickname string, volNickname string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
 
-	volDef := p.GetCtx().Project.Instances[iNickname].Volumes[volNickname]
+	volDef := p.DeployCtx.Project.Instances[iNickname].Volumes[volNickname]
 
 	if volDef.MountPoint == "" || volDef.Permissions == 0 || volDef.Owner == "" {
 		return lb.Complete(fmt.Errorf("empty parameter not allowed: volDef.MountPoint (%s), volDef.Permissions (%d), volDef.Owner (%s)", volDef.MountPoint, volDef.Permissions, volDef.Owner))
 	}
 
-	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)
+	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, volDef.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	foundDevice, foundAttachmentState, err := cldaws.GetVolumeAttachedDeviceById(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName)
+	foundDevice, foundAttachmentState, err := cldaws.GetVolumeAttachedDeviceById(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, foundVolIdByName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	if foundDevice != "" {
-		if foundAttachmentState == types.VolumeAttachmentStateAttached {
-			return lb.Complete(nil)
-		} else {
-			return lb.Complete(fmt.Errorf("cannot attach volume %s: it's already attached to device %s, but has invalid attachment state %s", volDef.Name, foundDevice, foundAttachmentState))
+	if foundDevice != "" && foundAttachmentState != types.VolumeAttachmentStateAttached {
+		return lb.Complete(fmt.Errorf("cannot attach volume %s: it's already attached to device %s, but has invalid attachment state %s", volDef.Name, foundDevice, foundAttachmentState))
+	}
+
+	suggestedDevice := volNicknameToAwsSuggestedDeviceName(p.DeployCtx.Project.Instances[iNickname].Volumes, volNickname)
+
+	if foundDevice == "" {
+		// Attach
+		foundInstanceIdByName, _, err := cldaws.GetInstanceIdAndStateByHostName(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, p.DeployCtx.Project.Instances[iNickname].InstName)
+		if err != nil {
+			return lb.Complete(err)
 		}
-	}
 
-	suggestedDevice := volNicknameToAwsSuggestedDeviceName(p.GetCtx().Project.Instances[iNickname].Volumes, volNickname)
-
-	// Attach
-
-	foundInstanceIdByName, _, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Instances[iNickname].InstName)
-	if err != nil {
-		return lb.Complete(err)
-	}
-
-	_, err = cldaws.AttachVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName, foundInstanceIdByName, suggestedDevice, p.GetCtx().Project.Timeouts.AttachVolume)
-	if err != nil {
-		return lb.Complete(err)
+		_, err = cldaws.AttachVolume(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, foundVolIdByName, foundInstanceIdByName, suggestedDevice, p.DeployCtx.Project.Timeouts.AttachVolume)
+		if err != nil {
+			return lb.Complete(err)
+		}
 	}
 
 	// Mount
 
 	deviceBlockId, er := rexec.ExecSshAndReturnLastLine(
-		p.GetCtx().Project.SshConfig,
-		p.GetCtx().Project.Instances[iNickname].BestIpAddress(),
+		p.DeployCtx.Project.SshConfig,
+		p.DeployCtx.Project.Instances[iNickname].BestIpAddress(),
 		fmt.Sprintf("%s\ninit_volume_attachment %s %s %d '%s'",
 			cldaws.InitVolumeAttachmentFunc,
 			awsFinalDeviceNameNitro(suggestedDevice), // AWS final device here
@@ -134,11 +131,11 @@ func (p *AwsDeployProvider) AttachVolume(iNickname string, volNickname string) (
 }
 
 func (p *AwsDeployProvider) DetachVolume(iNickname string, volNickname string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
 
-	volDef := p.GetCtx().Project.Instances[iNickname].Volumes[volNickname]
+	volDef := p.DeployCtx.Project.Instances[iNickname].Volumes[volNickname]
 
-	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)
+	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, volDef.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -148,7 +145,7 @@ func (p *AwsDeployProvider) DetachVolume(iNickname string, volNickname string) (
 		return lb.Complete(nil)
 	}
 
-	foundDevice, _, err := cldaws.GetVolumeAttachedDeviceById(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName)
+	foundDevice, _, err := cldaws.GetVolumeAttachedDeviceById(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, foundVolIdByName)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -161,29 +158,29 @@ func (p *AwsDeployProvider) DetachVolume(iNickname string, volNickname string) (
 	// Unmount
 
 	er := rexec.ExecSsh(
-		p.GetCtx().Project.SshConfig,
-		p.GetCtx().Project.Instances[iNickname].BestIpAddress(),
+		p.DeployCtx.Project.SshConfig,
+		p.DeployCtx.Project.Instances[iNickname].BestIpAddress(),
 		fmt.Sprintf("sudo umount -d %s", volDef.MountPoint), map[string]string{})
 	lb.Add(er.ToString())
 	if er.Error != nil {
 		return lb.Complete(fmt.Errorf("cannot umount volume %s on instance %s: %s", volNickname, iNickname, er.Error.Error()))
 	}
 
-	foundInstanceIdByName, _, err := cldaws.GetInstanceIdAndStateByHostName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Instances[iNickname].InstName)
+	foundInstanceIdByName, _, err := cldaws.GetInstanceIdAndStateByHostName(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, p.DeployCtx.Project.Instances[iNickname].InstName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
 	// Detach
 
-	return lb.Complete(cldaws.DetachVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName, foundInstanceIdByName, foundDevice, p.GetCtx().Project.Timeouts.DetachVolume))
+	return lb.Complete(cldaws.DetachVolume(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, foundVolIdByName, foundInstanceIdByName, foundDevice, p.DeployCtx.Project.Timeouts.DetachVolume))
 }
 
 func (p *AwsDeployProvider) DeleteVolume(iNickname string, volNickname string) (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
 
-	volDef := p.GetCtx().Project.Instances[iNickname].Volumes[volNickname]
-	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, volDef.Name)
+	volDef := p.DeployCtx.Project.Instances[iNickname].Volumes[volNickname]
+	foundVolIdByName, err := cldaws.GetVolumeIdByName(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, volDef.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -193,5 +190,5 @@ func (p *AwsDeployProvider) DeleteVolume(iNickname string, volNickname string) (
 		return lb.Complete(nil)
 	}
 
-	return lb.Complete(cldaws.DeleteVolume(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, foundVolIdByName))
+	return lb.Complete(cldaws.DeleteVolume(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, foundVolIdByName))
 }

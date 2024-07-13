@@ -198,11 +198,11 @@ type Project struct {
 	DeploymentName     string                       `json:"deployment_name"`
 	SshConfig          *rexec.SshConfigDef          `json:"ssh_config"`
 	Timeouts           ExecTimeouts                 `json:"timeouts"`
-	EnvVariablesUsed   []string                     `json:"env_variables_used"`
 	SecurityGroups     map[string]*SecurityGroupDef `json:"security_groups"`
 	Network            NetworkDef                   `json:"network"`
 	Instances          map[string]*InstanceDef      `json:"instances"`
 	DeployProviderName string                       `json:"deploy_provider_name"`
+	// EnvVariablesUsed   []string                     `json:"env_variables_used"`
 }
 
 func (p *Project) InitDefaults() {

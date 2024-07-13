@@ -31,10 +31,6 @@ func NewLogBuilder(header string, isVerbose bool) *LogBuilder {
 	return &lb
 }
 
-func AddLogMsg(sb *strings.Builder, logMsg LogMsg) {
-	sb.WriteString(string(logMsg))
-}
-
 func (lb *LogBuilder) AddObject(content string, o any) {
 	if !lb.IsVerbose {
 		return
@@ -56,6 +52,10 @@ func (lb *LogBuilder) Add(content string) {
 	if !lb.IsVerbose {
 		return
 	}
+	lb.Sb.WriteString(fmt.Sprintf("%s\n", content))
+}
+
+func (lb *LogBuilder) AddAlways(content string) {
 	lb.Sb.WriteString(fmt.Sprintf("%s\n", content))
 }
 

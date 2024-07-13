@@ -33,19 +33,19 @@ func createAwsSecurityGroup(ec2Client *ec2.Client, goCtx context.Context, tags m
 }
 
 func (p *AwsDeployProvider) CreateSecurityGroups() (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
 
-	vpcId, err := cldaws.GetVpcIdByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.Name)
+	vpcId, err := cldaws.GetVpcIdByName(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, p.DeployCtx.Project.Network.Name)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
 	if vpcId == "" {
-		return lb.Complete(fmt.Errorf("cannot create security groups, vpc %s does not exist", p.GetCtx().Project.Network.Name))
+		return lb.Complete(fmt.Errorf("cannot create security groups, vpc %s does not exist", p.DeployCtx.Project.Network.Name))
 	}
 
-	for _, sgDef := range p.GetCtx().Project.SecurityGroups {
-		err := createAwsSecurityGroup(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, sgDef, vpcId)
+	for _, sgDef := range p.DeployCtx.Project.SecurityGroups {
+		err := createAwsSecurityGroup(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, p.DeployCtx.Tags, lb, sgDef, vpcId)
 		if err != nil {
 			return lb.Complete(err)
 		}
@@ -68,9 +68,9 @@ func deleteAwsSecurityGroup(ec2Client *ec2.Client, goCtx context.Context, lb *l.
 }
 
 func (p *AwsDeployProvider) DeleteSecurityGroups() (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
-	for _, sgDef := range p.GetCtx().Project.SecurityGroups {
-		err := deleteAwsSecurityGroup(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, sgDef)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
+	for _, sgDef := range p.DeployCtx.Project.SecurityGroups {
+		err := deleteAwsSecurityGroup(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, sgDef)
 		if err != nil {
 			return lb.Complete(err)
 		}
