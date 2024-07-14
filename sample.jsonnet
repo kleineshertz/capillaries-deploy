@@ -1,9 +1,9 @@
 {
   // Variables to play with
 
-  local dep_name = 'sampleaws001',  // Can be any combination of alphanumeric characters. Make it unique.
-  local subnet_availability_zone = 'us-east-1a', // AWS-specific
-  local deployment_flavor_power = 'aws.arm64.c7g.8', // 1. aws or azure, 2. amd64 or arm64, 3. Flavor family, 4. Number of cores in Cassandra nodes. Daemon cores are 4 times less.
+  local dep_name = '{CAPIDEPLOY_DEPLOYMENT_NAME}',  // Can be any combination of alphanumeric characters. Make it unique.
+  local subnet_availability_zone = '{CAPIDEPLOY_SUBNET_AVAILABILITY_ZONE}', // AWS-specific
+  local deployment_flavor_power = '{CAPIDEPLOY_DEPLOYMENT_FLAVOR_POWER}', // 1. aws or azure, 2. amd64 or arm64, 3. Flavor family, 4. Number of cores in Cassandra nodes. Daemon cores are 4 times less.
 
    // Cassandra cluster size - 4,8,16
   local cassandra_total_nodes = 4,
@@ -62,13 +62,9 @@
     else if architecture == 'amd64' then 'ami-02f9afd340e6c0065' // ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20240606
     else 'unknown-architecture-unknown-image',
 
-  // local instance_image_id = 
-  //   if architecture == 'arm64' then 'ami-09b2701695676705d'// ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20240117 // 'ami-064b469793e32e5d2' ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-arm64-server-20230904
-  //   else if architecture == 'amd64' then 'ami-0d8583a0d8d6dd14f' //ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-amd64-server-20230714
-  //   else 'unknown-architecture-unknown-image',
-
+ 
   local instance_flavor = getFromMap({
-    'aws.amd64.c5a.4':  {cassandra:'c5ad.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.medium',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.amd64.c5a.4':  {cassandra:'c5ad.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.large',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.8':  {cassandra:'c5ad.2xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.large',   rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.16': {cassandra:'c5ad.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.xlarge',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.32': {cassandra:'c5ad.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 558.8G',        daemon: 'c6a.2xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
