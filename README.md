@@ -395,10 +395,10 @@ If everything goes well, it will create a Capillaries deployment accessible at B
 # Processing data using created deployment
 
 [Capillaries repository](https://github.com/capillariesio/capillaries) has a few tests that are ready to run in the cloud deployment:
-- [lookup quicktest S3](https://github.com/capillariesio/capillaries/blob/main/main/test/code/lookup/quicktest_s3): run `test_one_run_cloud.sh`
-- [Fannie Mae quicktest S3](https://github.com/capillariesio/capillaries/blob/main/main/test/code/fannie_mae/quicktest_s3): run `test_one_run_cloud.sh`
-- [Fannie Mae bigtest](https://github.com/capillariesio/capillaries/blob/main/main/test/code/fannie_mae/bigtest_cloud): run `test_one_run.sh`
-- [Portfolio bigtest](https://github.com/capillariesio/capillaries/blob/main/main/test/code/portfolio/bigtest_cloud): run `test_one_run.sh`
+- [lookup quicktest S3](https://github.com/capillariesio/capillaries/blob/main/test/code/lookup/quicktest_s3): run `test_one_run_cloud.sh`
+- [Fannie Mae quicktest S3](https://github.com/capillariesio/capillaries/blob/main/test/code/fannie_mae/quicktest_s3): run `test_one_run_cloud.sh`
+- [Fannie Mae bigtest](https://github.com/capillariesio/capillaries/blob/main/test/code/fannie_mae/bigtest_cloud): run `test_one_run.sh`
+- [Portfolio bigtest](https://github.com/capillariesio/capillaries/blob/main/test/code/portfolio/bigtest_cloud): run `test_one_run.sh`
 
 You will probably have to run these tests using `UserAccessCapillariesTestbucket` IAM user as per [Capillaries S3 instructions](https://github.com/capillariesio/capillaries/blob/main/doc/s3.md): that user should have access to the S3 bucket to upload/download config/data files. 
 
