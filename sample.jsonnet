@@ -4,19 +4,22 @@
   local dep_name = '{CAPIDEPLOY_DEPLOYMENT_NAME}',  // Can be any combination of alphanumeric characters. Make it unique.
   local subnet_availability_zone = '{CAPIDEPLOY_SUBNET_AVAILABILITY_ZONE}', // AWS-specific
   local deployment_flavor_power = '{CAPIDEPLOY_DEPLOYMENT_FLAVOR_POWER}', // 1. aws or azure, 2. amd64 or arm64, 3. Flavor family, 4. Number of cores in Cassandra nodes. Daemon cores are 4 times less.
-
-   // Cassandra cluster size - 4,8,16
-  local cassandra_total_nodes = 4,
+  local cassandra_total_nodes = std.parseInt('{CAPIDEPLOY_CASSANDRA_CLUSTER_SIZE}'), // Cassandra cluster size - 4,8,16
 
   // You probably will not change anything below this line
 
   // max: daemon_cores*1.5 (which is the same as cassandra cores / 4 * 1.5)
   local DEFAULT_DAEMON_THREAD_POOL_SIZE = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4 * 1.5), 
 
-  // Depends on cassandra latency, reasonable values are 5-20. Let it be:
-  // - max perf (->100% CPU): cassandra cores / 2: 8->4 16->8 32->16 64->32
-  // - cpnservative: cassandra cores / 4: 8->2 16->4 32->8 64->16
-  local DEFAULT_DAEMON_DB_WRITERS = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 2), 
+  // Writer threads. Depends on cassandra latency.
+  //                                            Writers                        Writers            Writers
+  // Cassandra cores    Daemon Cores   Conservative,multiplier=0.5   Average,multiplier=1.0  Aggressive,multiplier=1.5
+  //        8                2                     2                        4                           6
+  //       16                4                     4                        8                          12
+  //       32                8                     8                       16                          24
+  //       64               16                    16                       32                          48
+  local multiplier = 1.0,
+  local DEFAULT_DAEMON_DB_WRITERS = std.toString(std.round(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 2 * multiplier)), 
 
   // If tasks are CPU-intensive (Python calc), make it equal to cassandra_total_nodes, otherwise cassandra_total_nodes/2 may be enough
   local daemon_total_instances = cassandra_total_nodes, 
@@ -40,11 +43,13 @@
     else if daemon_total_instances == 4 then ['10.5.0.101', '10.5.0.102', '10.5.0.103', '10.5.0.104']
     else if daemon_total_instances == 8 then ['10.5.0.101', '10.5.0.102', '10.5.0.103', '10.5.0.104', '10.5.0.105', '10.5.0.106', '10.5.0.107', '10.5.0.108']
     else if daemon_total_instances == 16 then ['10.5.0.101', '10.5.0.102', '10.5.0.103', '10.5.0.104', '10.5.0.105', '10.5.0.106', '10.5.0.107', '10.5.0.108', '10.5.0.109', '10.5.0.110', '10.5.0.111', '10.5.0.112', '10.5.0.113', '10.5.0.114', '10.5.0.115', '10.5.0.116']
+    else if daemon_total_instances == 32 then ['10.5.0.101', '10.5.0.102', '10.5.0.103', '10.5.0.104', '10.5.0.105', '10.5.0.106', '10.5.0.107', '10.5.0.108', '10.5.0.109', '10.5.0.110', '10.5.0.111', '10.5.0.112', '10.5.0.113', '10.5.0.114', '10.5.0.115', '10.5.0.116', '10.5.0.117', '10.5.0.118', '10.5.0.119', '10.5.0.120', '10.5.0.121', '10.5.0.122', '10.5.0.123', '10.5.0.124', '10.5.0.125', '10.5.0.126', '10.5.0.127', '10.5.0.128', '10.5.0.129', '10.5.0.130', '10.5.0.131', '10.5.0.132']
     else [],
   local cassandra_ips = 
     if cassandra_total_nodes == 4 then ['10.5.0.11', '10.5.0.12', '10.5.0.13', '10.5.0.14']
     else if cassandra_total_nodes == 8 then ['10.5.0.11', '10.5.0.12', '10.5.0.13', '10.5.0.14', '10.5.0.15', '10.5.0.16', '10.5.0.17', '10.5.0.18']
     else if cassandra_total_nodes == 16 then ['10.5.0.11', '10.5.0.12', '10.5.0.13', '10.5.0.14', '10.5.0.15', '10.5.0.16', '10.5.0.17', '10.5.0.18', '10.5.0.19', '10.5.0.20', '10.5.0.21', '10.5.0.22', '10.5.0.23', '10.5.0.24', '10.5.0.25', '10.5.0.26']
+    else if cassandra_total_nodes == 32 then ['10.5.0.11', '10.5.0.12', '10.5.0.13', '10.5.0.14', '10.5.0.15', '10.5.0.16', '10.5.0.17', '10.5.0.18', '10.5.0.19', '10.5.0.20', '10.5.0.21', '10.5.0.22', '10.5.0.23', '10.5.0.24', '10.5.0.25', '10.5.0.26', '10.5.0.27', '10.5.0.28', '10.5.0.29', '10.5.0.30', '10.5.0.31', '10.5.0.32', '10.5.0.33', '10.5.0.34', '10.5.0.35', '10.5.0.36', '10.5.0.37', '10.5.0.38', '10.5.0.39', '10.5.0.40', '10.5.0.41', '10.5.0.42']
     else [],
 
   // Cassandra-specific
@@ -52,6 +57,7 @@
     if cassandra_total_nodes == 4 then ['-9223372036854775808', '-4611686018427387904', '0', '4611686018427387904']
     else if cassandra_total_nodes == 8 then ['-9223372036854775808', '-6917529027641081856', '-4611686018427387904', '-2305843009213693952', '0', '2305843009213693952', '4611686018427387904', '6917529027641081856']
     else if cassandra_total_nodes == 16 then ['-9223372036854775808','-8070450532247928832','-6917529027641081856','-5764607523034234880','-4611686018427387904','-3458764513820540928','-2305843009213693952','-1152921504606846976','0','1152921504606846976','2305843009213693952','3458764513820540928','4611686018427387904','5764607523034234880','6917529027641081856','8070450532247928832']
+    else if cassandra_total_nodes == 32 then ['-9223372036854775808','-8646911284551352320','-8070450532247928832','-7493989779944505344','-6917529027641081856','-6341068275337658368','-5764607523034234880','-5188146770730811392','-4611686018427387904','-4035225266123964416','-3458764513820540928','-2882303761517117440','-2305843009213693952','-1729382256910270464','-1152921504606846976','-576460752303423488','0','576460752303423488','1152921504606846976','1729382256910270464','2305843009213693952','2882303761517117440','3458764513820540928','4035225266123964416','4611686018427387904','5188146770730811392','5764607523034234880','6341068275337658368','6917529027641081856','7493989779944505344','8070450532247928832','8646911284551352320']
     else [],
   local cassandra_seeds = std.join(',', cassandra_ips),  // Used by cassandra nodes, all are seeds to avoid bootstrapping
   local cassandra_hosts = "'[\"" + std.join('","', cassandra_ips) + "\"]'",  // Used by daemons "'[\"10.5.0.11\",\"10.5.0.12\",\"10.5.0.13\",\"10.5.0.14\",\"10.5.0.15\",\"10.5.0.16\",\"10.5.0.17\",\"10.5.0.18\"]'",
@@ -303,7 +309,7 @@
           NETWORK_CIDR: $.network.cidr,
           BASTION_ALLOWED_IPS: '{CAPIDEPLOY_BASTION_ALLOWED_IPS}',
           EXTERNAL_IP_ADDRESS: '{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}',  // internal: capideploy populates it from ssh_config.external_ip_address after loading project file; used by webui and webapi config.sh
-          EXTERNAL_WEBAPI_PORT: '{CAPIDEPLOY_EXTERNAL_WEBAPI_PORT}',
+          EXTERNAL_WEBAPI_PORT: '6544',
           INTERNAL_WEBAPI_PORT: '6543',
         },
         cmd: {

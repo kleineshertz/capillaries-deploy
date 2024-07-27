@@ -323,46 +323,57 @@ Sample capideploy_aws.rc file to run before Capildeploy contains variables used 
 ```
 # Variables used in jsonnet
 
+
+# Alphanumeric characters only. Make it unique.
+export CAPIDEPLOY_DEPLOYMENT_NAME="sampleaws001"
+# Subnets, volumes and instances created here
+export CAPIDEPLOY_SUBNET_AVAILABILITY_ZONE="us-east-1c"
+# 1. aws or azure, 2. amd64 or arm64, 3. Flavor family, 4. Number of cores in Cassandra nodes. Daemon cores are 4 times less.
+export CAPIDEPLOY_DEPLOYMENT_FLAVOR_POWER="aws.arm64.c7g.8"
+# Cassandra cluster size - 4,8,16,32
+export CAPIDEPLOY_CASSANDRA_CLUSTER_SIZE="4"
+
 # SSH access to EC2 instances
 export CAPIDEPLOY_SSH_USER=ubuntu
 # Name of the keypair stored at AWS
 export CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_NAME=sampledeployment005-root-key
-# Exported PEM file with private SSH key from the AWS keypair, either a file or a variable
-# export CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_PRIVATE_KEY_OR_PATH=/home/johndoe/.ssh/sampledeployment005_rsa
-export CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_PRIVATE_KEY_OR_PATH="-----BEGIN..."
+# Exported PEM file with private SSH key from the AWS keypair: either a file (/home/johndoe/.ssh/sampledeployment005_rsa) or PEM key contents
+export CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_PRIVATE_KEY_OR_PATH="-----BEGIN RSA PRIVATE KEY-----...-----END RSA PRIVATE KEY-----"
 
 # NGINX IP address filter: your IP address(es) or cidr(s), for example: "135.23.0.0/16,136.104.0.21"
 export CAPIDEPLOY_BASTION_ALLOWED_IPS="..."
-export CAPIDEPLOY_EXTERNAL_WEBAPI_PORT=6544
 
-# This is where capideploy takes Capillaries binaries from,
-# see https://github.com/capillariesio/capillaries/blob/main/binaries_upload.sh
+# This is where capideploy takes Capillaries binaries from, see https://github.com/capillariesio/capillaries/blob/main/binaries_upload.sh
 export CAPIDEPLOY_CAPILLARIES_RELEASE_URL=https://capillaries-release.s3.us-east-1.amazonaws.com/latest
 
-# RabbitMQ admin access (RabbitMQ Mgmt UI)
+# RabbitMQ admin access (RabbitMQ Mgmt UI), can be anything
 export CAPIDEPLOY_RABBITMQ_ADMIN_NAME=...
 export CAPIDEPLOY_RABBITMQ_ADMIN_PASS=...
 
-# RabbitMQ user access (used by Capillaries components to talk to RabbitMQ)
+# RabbitMQ user access (used by Capillaries components to talk to RabbitMQ), can be anything
 export CAPIDEPLOY_RABBITMQ_USER_NAME=...
 export CAPIDEPLOY_RABBITMQ_USER_PASS=...
 
-# ~/.aws/config: default/region (without it, AWS API will not locate S3 buckets, it goes to /home/$SSH_USER/.aws/config)
+# Goes to /home/$SSH_USER/.aws/config: default/region (without it, AWS API called by Capillaries binaries will not locate S3 buckets)
 export CAPIDEPLOY_S3_AWS_DEFAULT_REGION=us-east-1
 
 # Capideploy will use this instance profile when creating instances that need access to S3 bucket
 export CAPIDEPLOY_AWS_INSTANCE_PROFILE_WITH_S3_ACCESS=RoleAccessCapillariesTestbucket
 
+
 # Variables not used in jsonnet, but used by capideploy binaries. It's just more convenient to use env variables instead of cmd parameters
+
 
 # These two variables are required only for the arn:aws:iam::<saas_provider_aws_account_id>:user/UserSaasCapideployOperator scenario.
 # If CAPIDEPLOY_AWS_ROLE_TO_ASSUME_ARN is empty, capideploy runs under arn:aws:iam::<customer_aws_account_id>:user/UserCapideployOperator
 # ARN of the role to assume, if needed
-export CAPIDEPLOY_AWS_ROLE_TO_ASSUME_ARN="arn:aws:iam::<customer_aws_account_id>:role/RoleCapideployOperator"
+export CAPIDEPLOY_AWS_ROLE_TO_ASSUME_ARN="arn:aws:iam::...:role/RoleCapideployOperator"
 # External id of the role to assume, can be empty. If CAPIDEPLOY_AWS_ROLE_TO_ASSUME_ARN is specified, it is recommended to use external id
 export CAPIDEPLOY_AWS_ROLE_TO_ASSUME_EXTERNAL_ID="..."
 
+
 # Variables not used in jsonnet, but used by AWS SDK called from capideploy binaries
+
 
 # arn:aws:iam::<customer_aws_account_id>:user/UserCapideployOperator or arn:aws:iam::<saas_provider_aws_account_id>:user/UserSaasCapideployOperator
 export AWS_ACCESS_KEY_ID=AK...
@@ -376,7 +387,7 @@ Run
 
 ```
 source ~/capideploy_aws.rc
-capideploy deployment_create -p sample.jsonnet -v > deploy.log
+./capideploy deployment_create -p sample.jsonnet -v > deploy.log
 ```
 
 If everything goes well, it will create a Capillaries deployment accessible at BASTION_IP address (see deploy.log). capideploy does not use DNS, so you will have to access your deployment by IP address.
@@ -412,5 +423,5 @@ curl -s -w "\n" -d '{"script_uri":"'$scriptFile'", "script_params_uri":"'$params
 To delete all AWS resources that your deployment uses, run
 ```
 source ~/capideploy_aws.rc
-capideploy deployment_delete -p sample.jsonnet -v > undeploy.log
+./capideploy deployment_delete -p sample.jsonnet -v -i > undeploy.log
 ```
