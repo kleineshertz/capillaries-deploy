@@ -150,10 +150,7 @@ type UserDef struct {
 	Name          string `json:"name"`
 	PublicKeyPath string `json:"public_key_path"`
 }
-type PrivateKeyDef struct {
-	Name           string `json:"name"`
-	PrivateKeyPath string `json:"private_key_path"`
-}
+
 type InstanceDef struct {
 	Purpose  string `json:"purpose"`
 	InstName string `json:"inst_name"`
@@ -198,11 +195,11 @@ type Project struct {
 	DeploymentName     string                       `json:"deployment_name"`
 	SshConfig          *rexec.SshConfigDef          `json:"ssh_config"`
 	Timeouts           ExecTimeouts                 `json:"timeouts"`
-	EnvVariablesUsed   []string                     `json:"env_variables_used"`
 	SecurityGroups     map[string]*SecurityGroupDef `json:"security_groups"`
 	Network            NetworkDef                   `json:"network"`
 	Instances          map[string]*InstanceDef      `json:"instances"`
 	DeployProviderName string                       `json:"deploy_provider_name"`
+	// EnvVariablesUsed   []string                     `json:"env_variables_used"`
 }
 
 func (p *Project) InitDefaults() {
@@ -412,32 +409,16 @@ func LoadProject(prjFile string) (*Project, error) {
 		return nil, fmt.Errorf("cannot find project file [%s]: [%s]", prjFullPath, err.Error())
 	}
 
-	vm := jsonnet.MakeVM()
-	prjString, err := vm.EvaluateFile(prjFile)
+	byteJsonnet, err := os.ReadFile(prjFullPath)
 	if err != nil {
 		return nil, err
 	}
-
-	// prjBytes, err := os.ReadFile(prjFullPath)
-	// if err != nil {
-	// 	return nil, "", fmt.Errorf("cannot read project file %s: %s", prjFullPath, err.Error())
-	// }
-
-	//prjPair := ProjectPair{}
-
-	// Read project
-
-	// err = json.Unmarshal(prjBytes, &prjPair.Template)
-	// if err != nil {
-	// 	return nil, "", fmt.Errorf("cannot parse project file %s: %s", prjFullPath, err.Error())
-	// }
-
-	// prjString := string(prjBytes)
+	strJsonnet := string(byteJsonnet)
 
 	envVars := map[string]string{}
 	missingVars := make([]string, 0)
 	r := regexp.MustCompile(`\{(CAPIDEPLOY[_A-Z0-9]+)\}`)
-	matches := r.FindAllStringSubmatch(prjString, -1)
+	matches := r.FindAllStringSubmatch(strJsonnet, -1)
 	for _, v := range matches {
 		envVar := v[1]
 		envVars[envVar] = os.Getenv(envVar)
@@ -447,7 +428,7 @@ func LoadProject(prjFile string) (*Project, error) {
 	}
 
 	if len(missingVars) > 0 {
-		return nil, fmt.Errorf("cannot load deployment project, missing env variables:\n%v", strings.Join(missingVars, "\n"))
+		return nil, fmt.Errorf("cannot load deployment project from %s, missing env variables: %s\n", prjFullPath, strings.Join(missingVars, "\n"))
 	}
 
 	// Replace env vars
@@ -455,13 +436,27 @@ func LoadProject(prjFile string) (*Project, error) {
 	// Revert unescaping in parameter values caused by JSON - we want to preserve `\n"` and `\"`
 	escapeReplacer := strings.NewReplacer("\n", "\\n", `"`, `\"`)
 	for k, v := range envVars {
-		prjString = strings.ReplaceAll(prjString, fmt.Sprintf("{%s}", k), escapeReplacer.Replace(v))
+		strJsonnet = strings.ReplaceAll(strJsonnet, fmt.Sprintf("{%s}", k), escapeReplacer.Replace(v))
 	}
 
-	// Hacky way to provide bastion ip
-	// prjString = strings.ReplaceAll(prjString, "{CAPIDEPLOY.INTERNAL.BASTION_EXTERNAL_IP_ADDRESS}", prjPair.Template.SshConfig.BastionExternalIp)
+	fTemp, err := os.CreateTemp("", "capideploy_jsonnet")
+	if err != nil {
+		return nil, err
+	}
+	_, err = fTemp.WriteString(strJsonnet)
+	if err != nil {
+		fTemp.Close()
+		return nil, err
+	}
+	fTemp.Close()
 
-	// Re-deserialize forom prjString, now with replaced params
+	// Run jsonnet engine agains a file with replaced env vars
+
+	vm := jsonnet.MakeVM()
+	prjString, err := vm.EvaluateFile(fTemp.Name())
+	if err != nil {
+		return nil, err
+	}
 
 	project := Project{}
 	if err := json.Unmarshal([]byte(prjString), &project); err != nil {

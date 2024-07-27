@@ -44,7 +44,7 @@ type SshConfigDef struct {
 	BastionExternalIp            string `json:"bastion_external_ip_address"` // Output only
 	Port                         int    `json:"port"`
 	User                         string `json:"user"`
-	PrivateKeyPath               string `json:"private_key_path"`
+	PrivateKeyOrPath             string `json:"private_key_or_path"`
 }
 
 type TunneledSshClient struct {
@@ -73,7 +73,7 @@ func (tsc *TunneledSshClient) Close() {
 func NewTunneledSshClient(sshConfig *SshConfigDef, ipAddress string) (*TunneledSshClient, error) {
 	bastionSshClientConfig, err := NewSshClientConfig(
 		sshConfig.User,
-		sshConfig.PrivateKeyPath)
+		sshConfig.PrivateKeyOrPath)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func NewTunneledSshClient(sshConfig *SshConfigDef, ipAddress string) (*TunneledS
 
 		tunneledSshClientConfig, err := NewSshClientConfig(
 			sshConfig.User,
-			sshConfig.PrivateKeyPath)
+			sshConfig.PrivateKeyOrPath)
 		if err != nil {
 			return nil, err
 		}

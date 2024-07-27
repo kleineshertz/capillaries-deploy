@@ -40,7 +40,7 @@ if ! grep -q "$BASTION_IP" ~/.ssh/config; then
   echo "  User $CAPIDEPLOY_SSH_USER" | tee -a ~/.ssh/config
   echo "  StrictHostKeyChecking=no" | tee -a ~/.ssh/config
   echo "  UserKnownHostsFile=/dev/null" | tee -a ~/.ssh/config
-  echo "  IdentityFile  $CAPIDEPLOY_SSH_PRIVATE_KEY_PATH" | tee -a ~/.ssh/config
+  echo "  IdentityFile  $CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_PRIVATE_KEY_OR_PATH" | tee -a ~/.ssh/config
 fi
 
 set -x
@@ -65,7 +65,7 @@ set -x
 ./capideploy config_services "bastion,rabbitmq,prometheus,daemon*" -p sample.jsonnet -v >> deploy.log
 #./capideploy config_services "bastion" -p sample.jsonnet -v >> deploy.log
 
-ssh -o StrictHostKeyChecking=no -i $CAPIDEPLOY_SSH_PRIVATE_KEY_PATH -J $BASTION_IP $CAPIDEPLOY_SSH_USER@10.5.0.11 'nodetool describecluster;nodetool status'
+ssh -o StrictHostKeyChecking=no -i $CAPIDEPLOY_AWS_SSH_ROOT_KEYPAIR_PRIVATE_KEY_OR_PATH -J $BASTION_IP $CAPIDEPLOY_SSH_USER@10.5.0.11 'nodetool describecluster;nodetool status'
 
 duration=$SECONDS
 echo "$(($duration / 60))m $(($duration % 60))s elapsed."

@@ -22,21 +22,37 @@ func ensureFloatingIp(ec2Client *ec2.Client, goCtx context.Context, tags map[str
 }
 
 func (p *AwsDeployProvider) CreateFloatingIps() (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
 
-	bastionIpName := p.GetCtx().Project.SshConfig.BastionExternalIpAddressName
-	bastionIpAddress, err := ensureFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, bastionIpName)
+	bastionIpName := p.DeployCtx.Project.SshConfig.BastionExternalIpAddressName
+	bastionIpAddress, err := ensureFloatingIp(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, p.DeployCtx.Tags, lb, bastionIpName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	p.GetCtx().Project.SshConfig.BastionExternalIp = bastionIpAddress
+	p.DeployCtx.Project.SshConfig.BastionExternalIp = bastionIpAddress
 
 	// Tell the user about the bastion IP
-	reportPublicIp(p.GetCtx().Project)
+	lb.AddAlways(fmt.Sprintf(`
+Public IP reserved, now you can use it for SSH jumphost in your ~/.ssh/config:
 
-	natgwIpName := p.GetCtx().Project.Network.PublicSubnet.NatGatewayExternalIpName
-	_, err = ensureFloatingIp(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, p.GetCtx().Tags, lb, natgwIpName)
+Host %s
+User %s
+StrictHostKeyChecking=no
+UserKnownHostsFile=/dev/null
+IdentityFile <private key path>
+
+Also, you may find it convenient to use in your commands:
+
+export BASTION_IP=%s
+
+`,
+		p.DeployCtx.Project.SshConfig.BastionExternalIp,
+		p.DeployCtx.Project.SshConfig.User,
+		p.DeployCtx.Project.SshConfig.BastionExternalIp))
+
+	natgwIpName := p.DeployCtx.Project.Network.PublicSubnet.NatGatewayExternalIpName
+	_, err = ensureFloatingIp(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, p.DeployCtx.Tags, lb, natgwIpName)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -59,15 +75,15 @@ func releaseFloatingIpIfNotAllocated(ec2Client *ec2.Client, goCtx context.Contex
 }
 
 func (p *AwsDeployProvider) DeleteFloatingIps() (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
 
-	bastionIpName := p.GetCtx().Project.SshConfig.BastionExternalIpAddressName
-	err := releaseFloatingIpIfNotAllocated(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, bastionIpName)
+	bastionIpName := p.DeployCtx.Project.SshConfig.BastionExternalIpAddressName
+	err := releaseFloatingIpIfNotAllocated(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, bastionIpName)
 	if err != nil {
 		return lb.Complete(err)
 	}
 
-	err = releaseFloatingIpIfNotAllocated(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, p.GetCtx().Project.Network.PublicSubnet.NatGatewayExternalIpName)
+	err = releaseFloatingIpIfNotAllocated(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, p.DeployCtx.Project.Network.PublicSubnet.NatGatewayExternalIpName)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -105,9 +121,9 @@ func (p *AwsDeployProvider) DeleteFloatingIps() (l.LogMsg, error) {
 // }
 
 func (p *AwsDeployProvider) PopulateInstanceExternalAddressByName() (l.LogMsg, error) {
-	lb := l.NewLogBuilder(l.CurFuncName(), p.GetCtx().IsVerbose)
-	ipAddressName := p.GetCtx().Project.SshConfig.BastionExternalIpAddressName
-	ipAddress, _, _, err := cldaws.GetPublicIpAddressAllocationAssociatedInstanceByName(p.GetCtx().Aws.Ec2Client, p.GetCtx().GoCtx, lb, ipAddressName)
+	lb := l.NewLogBuilder(l.CurFuncName(), p.DeployCtx.IsVerbose)
+	ipAddressName := p.DeployCtx.Project.SshConfig.BastionExternalIpAddressName
+	ipAddress, _, _, err := cldaws.GetPublicIpAddressAllocationAssociatedInstanceByName(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, ipAddressName)
 	if err != nil {
 		return lb.Complete(err)
 	}
@@ -117,10 +133,10 @@ func (p *AwsDeployProvider) PopulateInstanceExternalAddressByName() (l.LogMsg, e
 	}
 
 	// Updates project: ssh config
-	p.GetCtx().Project.SshConfig.BastionExternalIp = ipAddress
+	p.DeployCtx.Project.SshConfig.BastionExternalIp = ipAddress
 
 	// Updates project: instances
-	for _, iDef := range p.GetCtx().Project.Instances {
+	for _, iDef := range p.DeployCtx.Project.Instances {
 		if iDef.ExternalIpAddressName == ipAddressName {
 			iDef.ExternalIpAddress = ipAddress
 		}

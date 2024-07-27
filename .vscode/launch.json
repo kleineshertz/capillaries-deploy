@@ -11,11 +11,10 @@
             "mode": "debug",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/pkg/cmd/capideploy/capideploy.go",
-            "envFile": "${env:HOME}/capideploy_aws.rc",
+            "envFile": "${env:HOME}/capideploy_aws.env",
             "args": [
-                "delete_networking",
-                "-p=sample.jsonnet",
-                "-v"
+                "check_cassandra_status",
+                "-p=sample.jsonnet", "-v"
             ]
         },
     ]

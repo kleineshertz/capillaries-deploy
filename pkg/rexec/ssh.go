@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -62,20 +63,34 @@ func parsePemBlock(block *pem.Block) (any, error) {
 	}
 }
 
-func NewSshClientConfig(user string, privateKeyPath string) (*ssh.ClientConfig, error) {
-	keyPath := privateKeyPath
-	if strings.HasPrefix(keyPath, "~/") {
-		homeDir, _ := os.UserHomeDir()
-		keyPath = filepath.Join(homeDir, keyPath[2:])
-	}
-	pemBytes, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read private key file %s: %s", keyPath, err.Error())
-	}
-
-	signer, err := signerFromPem(pemBytes)
-	if err != nil {
-		return nil, err
+func NewSshClientConfig(user string, privateKeyOrPath string) (*ssh.ClientConfig, error) {
+	reBegin := regexp.MustCompile(`-----BEGIN [ a-zA-Z0-9]+ KEY-----`)
+	reEnd := regexp.MustCompile(`-----END [ a-zA-Z0-9]+ KEY-----`)
+	strBegin := reBegin.FindString(privateKeyOrPath)
+	strEnd := reEnd.FindString(privateKeyOrPath)
+	var signer ssh.Signer
+	if strBegin != "" && strEnd != "" {
+		pemWithoutCrlf := strings.NewReplacer("\n", "", "\r", "").Replace(privateKeyOrPath)
+		pemWithTwoCrlfs := strings.ReplaceAll(strings.ReplaceAll(pemWithoutCrlf, strBegin, strBegin+"\n"), strEnd, "\n"+strEnd)
+		var err error
+		signer, err = signerFromPem([]byte(pemWithTwoCrlfs))
+		if err != nil {
+			return nil, fmt.Errorf("cannot use private key starting with %s: %s", strBegin, err.Error())
+		}
+	} else {
+		keyPath := privateKeyOrPath
+		if strings.HasPrefix(keyPath, "~/") {
+			homeDir, _ := os.UserHomeDir()
+			keyPath = filepath.Join(homeDir, keyPath[2:])
+		}
+		pemBytes, err := os.ReadFile(keyPath)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read private key file %s: %s", keyPath, err.Error())
+		}
+		signer, err = signerFromPem(pemBytes)
+		if err != nil {
+			return nil, fmt.Errorf("cannot use private key from file %s(%s): %s", privateKeyOrPath, keyPath, err.Error())
+		}
 	}
 
 	return &ssh.ClientConfig{
