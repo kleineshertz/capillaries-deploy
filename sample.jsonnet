@@ -8,8 +8,13 @@
 
   // You probably will not change anything below this line
 
+  // Prometheus and exporters versions
+  local prometheus_node_exporter_version = '1.8.2', // See https://github.com/prometheus/node_exporter/releases
+  local prometheus_server_version = '2.55.0', // See https://github.com/prometheus/prometheus/releases
+  local jmx_exporter_version = '1.0.1', // See https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/
+
   // max: daemon_cores*1.5 (which is the same as cassandra cores / 4 * 1.5)
-  local DEFAULT_DAEMON_THREAD_POOL_SIZE = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4 * 1.5), 
+  local DEFAULT_DAEMON_THREAD_POOL_SIZE = std.toString(std.round(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4 * 1.5)), 
 
   // Writer threads. Depends on cassandra latency.
   //                                            Writers                        Writers            Writers
@@ -84,11 +89,6 @@
 
   // Volumes
   local volume_availability_zone = subnet_availability_zone, // Keep it simple
-
-  // Prometheus and exporters versions
-  local prometheus_node_exporter_version = '1.6.0',
-  local prometheus_server_version = '2.45.0',
-  local jmx_exporter_version = '0.20.0',
 
   // Used by Prometheus "\\'localhost:9100\\',\\'10.5.1.10:9100\\',\\'10.5.0.5:9100\\',\\'10.5.0.11:9100\\'...",
   local prometheus_targets = std.format("\\'localhost:9100\\',\\'%s:9100\\',\\'%s:9100\\',", [internal_bastion_ip, rabbitmq_ip]) + // Prometheus node exporter

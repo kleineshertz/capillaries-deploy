@@ -381,6 +381,12 @@ export AWS_SECRET_ACCESS_KEY=...
 export AWS_DEFAULT_REGION=us-east-1
 ```
 
+# Build capideploy binary
+
+```
+go build ./pkg/cmd/capideploy
+```
+
 # Create deployment
 
 Run
