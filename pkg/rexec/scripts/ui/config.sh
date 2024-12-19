@@ -16,4 +16,4 @@ fi
 
 # This is not idempotent. It's actually pretty hacky.
 echo Patching WebUI to use external Webapi ip:port $EXTERNAL_IP_ADDRESS:$EXTERNAL_WEBAPI_PORT
-sed -i -e 's~localhost:6543~'$EXTERNAL_IP_ADDRESS':'$EXTERNAL_WEBAPI_PORT'~g' /home/$SSH_USER/ui/_app/immutable/nodes/*.js
+sed -i -e 's~localhost:6543~'$EXTERNAL_IP_ADDRESS':'$EXTERNAL_WEBAPI_PORT'~g' /home/$SSH_USER/ui/_app/immutable/chunks/*.js

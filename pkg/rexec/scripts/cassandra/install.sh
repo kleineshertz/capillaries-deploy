@@ -1,9 +1,9 @@
 if [ "$JMX_EXPORTER_VERSION" = "" ]; then
-  echo Error, missing: JMX_EXPORTER_VERSION=0.20.0
+  echo Error, missing: JMX_EXPORTER_VERSION=1.0.1
   exit 1
 fi
 
-echo "deb https://debian.cassandra.apache.org 41x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
+echo "deb https://debian.cassandra.apache.org 50x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
 # apt-key is deprecated. but still working, just silence it
 curl -s https://downloads.apache.org/cassandra/KEYS | sudo apt-key add - 2>/dev/null
 
@@ -107,6 +107,8 @@ echo 'JVM_OPTS="$JVM_OPTS -javaagent:/usr/share/cassandra/lib/jmx_prometheus_jav
 # For now stop it. We will reconfigure it anywways
 sudo systemctl stop cassandra
 
+# Cassandra 50 has a habit to make it drwxr-x---. Make it drwxr-xr-x
+sudo chmod 755 /var/log/cassandra
 
 # RAM disk size in GB
 # export RAM_DISK_SIZE=$(awk '/MemFree/ { printf "%.0f\n", $2/1024/2 }' /proc/meminfo)

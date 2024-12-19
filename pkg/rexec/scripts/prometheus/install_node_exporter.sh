@@ -1,5 +1,5 @@
 if [ "$PROMETHEUS_NODE_EXPORTER_VERSION" = "" ]; then
-  echo Error, missing: PROMETHEUS_NODE_EXPORTER_VERSION=1.5.0
+  echo Error, missing: PROMETHEUS_NODE_EXPORTER_VERSION=1.8.2
  exit 1
 fi
 

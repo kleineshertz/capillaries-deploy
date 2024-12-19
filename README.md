@@ -381,6 +381,12 @@ export AWS_SECRET_ACCESS_KEY=...
 export AWS_DEFAULT_REGION=us-east-1
 ```
 
+# Build capideploy binary
+
+```
+go build ./pkg/cmd/capideploy
+```
+
 # Create deployment
 
 Run
@@ -390,7 +396,24 @@ source ~/capideploy_aws.rc
 ./capideploy deployment_create -p sample.jsonnet -v > deploy.log
 ```
 
-If everything goes well, it will create a Capillaries deployment accessible at BASTION_IP address (see deploy.log). capideploy does not use DNS, so you will have to access your deployment by IP address.
+If everything goes well, it will create a Capillaries deployment accessible at BASTION_IP address (see deploy.log). capideploy does not use DNS, so you will have to access your deployment by IP address. Find it in the deploy.log, it suggests you BASTION_IP environment variable for it.
+
+# Monitoring deployment
+
+Capillaries UI:
+http://$BASTION_IP
+
+RabbitMQ console:
+http://$BASTION_IP:15672/#/queues
+
+Prometheus: Cassandra stats
+http://$BASTION_IP:9090/graph?g0.expr=sum(irate(cassandra_clientrequest_localrequests_count%7Bclientrequest%3D%22Write%22%7D%5B1m%5D))&g0.tab=0&g0.display_mode=lines&g0.show_exemplars=1&g0.range_input=15m&g1.expr=sum(irate(cassandra_clientrequest_localrequests_count%7Bclientrequest%3D%22Read%22%7D%5B1m%5D))&g1.tab=0&g1.display_mode=lines&g1.show_exemplars=0&g1.range_input=15m
+
+Prometheus: CPU stats
+http://$BASTION_IP:9090/graph?g0.expr=100%20-%20(avg%20by(instance)%20(rate(node_cpu_seconds_total%7Bmode%3D%22idle%22%7D%5B1m%5D))%20*%20100)&g0.tab=0&g0.display_mode=lines&g0.show_exemplars=0&g0.range_input=15m
+
+Cassandra status:
+ssh -o StrictHostKeyChecking=no -i ~/.ssh/sprivate_key -J $BASTION_IP ubuntu@10.5.0.11 'nodetool status'
 
 # Processing data using created deployment
 
@@ -415,8 +438,22 @@ scriptFile=$cfgS3/script.json
 paramsFile=$cfgS3/script_params_one_run_s3.json
 webapiUrl=http://$BASTION_IP:6544
 startNodes=read_orders,read_order_items
-curl -s -w "\n" -d '{"script_uri":"'$scriptFile'", "script_params_uri":"'$paramsFile'", "start_nodes":"'$startNodes'"}' -H "Content-Type: application/json" -X POST $webapiUrl"/ks/$keyspace/run"
+curl -s -w "\n" -d '{"script_url":"'$scriptFile'", "script_params_url":"'$paramsFile'", "start_nodes":"'$startNodes'"}' -H "Content-Type: application/json" -X POST $webapiUrl"/ks/$keyspace/run"
 ```
+
+# Troubleshooting
+
+Q. The run starts, but no nodes processed
+A. For some reason, Capillaries daemon(s) cannot process RabbitMQ messages created when the run was started. Check out combined capidaemon logs at the bastion:
+
+ssh -o StrictHostKeyChecking=no -i ~/.ssh/private_key ubuntu@$BASTION_IP
+less /mnt/capi_log/capidaemon.log
+
+Q. Getting HTTP 403 (forbidden) error when navigating to the UI or calling webapi.
+A. Make sure you specified the proper CAPIDEPLOY_BASTION_ALLOWED_IPS environment variable when you run capideploy. To fix the problem in the deployment, edit /etc/nginx/includes/allowed_ips.conf on the bastion and restart nginx.
+
+Q. When the UI calls Webapi, some error is returned.
+A. Make sure that the UI calls webapi at the right URL, not at localhost:6543. There is a section in pkg/rexec/scripts/ui/config.sh that patches UI js file, make sure it is working as expected.
 
 # Delete deployment
 

@@ -1,5 +1,5 @@
 if [ "$PROMETHEUS_VERSION" = "" ]; then
-  echo Error, missing: PROMETHEUS_VERSION=2.41.0
+  echo Error, missing: PROMETHEUS_VERSION=2.55.0
  exit 1
 fi
 

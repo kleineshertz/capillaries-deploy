@@ -8,8 +8,13 @@
 
   // You probably will not change anything below this line
 
+  // Prometheus and exporters versions
+  local prometheus_node_exporter_version = '1.8.2', // See https://github.com/prometheus/node_exporter/releases
+  local prometheus_server_version = '2.55.0', // See https://github.com/prometheus/prometheus/releases
+  local jmx_exporter_version = '1.0.1', // See https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/
+
   // max: daemon_cores*1.5 (which is the same as cassandra cores / 4 * 1.5)
-  local DEFAULT_DAEMON_THREAD_POOL_SIZE = std.toString(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4 * 1.5), 
+  local DEFAULT_DAEMON_THREAD_POOL_SIZE = std.toString(std.round(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4 * 1.5)), 
 
   // Writer threads. Depends on cassandra latency.
   //                                            Writers                        Writers            Writers
@@ -75,7 +80,7 @@
     'aws.amd64.c5a.16': {cassandra:'c5ad.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.xlarge',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.32': {cassandra:'c5ad.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 558.8G',        daemon: 'c6a.2xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.64': {cassandra:'c5ad.16xlarge', cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]T', daemon: 'c6a.4xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
-    'aws.arm64.c7g.4':  {cassandra:'c7gd.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c7g.medium',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
+    'aws.arm64.c7g.4':  {cassandra:'c7gd.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c7g.medium',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'}, // lsblk: cassandra data0 nvme1n1 220.7G, bastion /mnt/capi_log nvme1n1 10G
     'aws.arm64.c7g.8':  {cassandra:'c7gd.2xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c7g.large',   rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
     'aws.arm64.c7g.16': {cassandra:'c7gd.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 884.8G',        daemon: 'c7g.xlarge',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
     'aws.arm64.c7g.32': {cassandra:'c7gd.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',          daemon: 'c7g.2xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
@@ -84,11 +89,6 @@
 
   // Volumes
   local volume_availability_zone = subnet_availability_zone, // Keep it simple
-
-  // Prometheus and exporters versions
-  local prometheus_node_exporter_version = '1.6.0',
-  local prometheus_server_version = '2.45.0',
-  local jmx_exporter_version = '0.20.0',
 
   // Used by Prometheus "\\'localhost:9100\\',\\'10.5.1.10:9100\\',\\'10.5.0.5:9100\\',\\'10.5.0.11:9100\\'...",
   local prometheus_targets = std.format("\\'localhost:9100\\',\\'%s:9100\\',\\'%s:9100\\',", [internal_bastion_ip, rabbitmq_ip]) + // Prometheus node exporter
