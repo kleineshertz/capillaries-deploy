@@ -430,6 +430,7 @@ Please note that in order to run these tests or your own scripts in your newly c
 In general, you can start a Capillaries run in your deployment via REST API as follows:
 
 ```shell
+source ~/UserAccessCapillariesTestbucket.rc
 CAPILLARIES_AWS_TESTBUCKET=capillaries-testbucket
 keyspace="lookup_quicktest_s3"
 cfgS3=s3://$CAPILLARIES_AWS_TESTBUCKET/capi_cfg/lookup_quicktest

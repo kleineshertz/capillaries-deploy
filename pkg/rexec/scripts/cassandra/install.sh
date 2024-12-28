@@ -12,15 +12,32 @@ cd /etc/apt
 sudo cp trusted.gpg trusted.gpg.d
 cd ~
 
-sudo DEBIAN_FRONTEND=noninteractive apt-get -y update
+# apt-get -y install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
+
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 
 #iostat
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y sysstat
+# apt-get install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y sysstat 2>/dev/null
+if [ "$?" -ne "0" ]; then
+    echo sysstat install error, exiting
+    exit $?
+fi
 
 # Cassandra requires Java 8
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y openjdk-8-jdk openjdk-8-jre
+# apt-get install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y openjdk-8-jdk openjdk-8-jre 2>/dev/null
+if [ "$?" -ne "0" ]; then
+    echo openjdk install error, exiting
+    exit $?
+fi
 
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y cassandra
+# apt-get install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y cassandra 2>/dev/null
+if [ "$?" -ne "0" ]; then
+    echo cassandra install error, exiting
+    exit $?
+fi
 
 sudo systemctl status cassandra
 if [ "$?" -ne "0" ]; then

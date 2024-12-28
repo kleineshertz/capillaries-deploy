@@ -69,18 +69,18 @@
   
   // Instances
   local instance_image_id = 
-    if architecture == 'arm64' then 'ami-01296213d823247f2' // ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-20240615
-    else if architecture == 'amd64' then 'ami-02f9afd340e6c0065' // ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20240606
+    if architecture == 'arm64' then 'ami-04474687c34a061cf' //Expires 2026-12-18 ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-20241218 // ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-20240615
+    else if architecture == 'amd64' then 'ami-079cb33ef719a7b78' // Expires 2026-12-18 ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20241218 // ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20240606
     else 'unknown-architecture-unknown-image',
 
  
   local instance_flavor = getFromMap({
-    'aws.amd64.c5a.4':  {cassandra:'c5ad.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.large',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.amd64.c5a.4':  {cassandra:'c5ad.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] 139.7G', daemon: 'c6a.large',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' }, // quick_lookup 23s, bastion lsblk: "xvdf 202:80 0 10G  0 disk /mnt/capi_log", cass lsblk: "nvme1n1 259:1 0 139.7G 0 disk"
     'aws.amd64.c5a.8':  {cassandra:'c5ad.2xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.large',   rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.16': {cassandra:'c5ad.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.xlarge',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.32': {cassandra:'c5ad.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 558.8G',        daemon: 'c6a.2xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.64': {cassandra:'c5ad.16xlarge', cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]T', daemon: 'c6a.4xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
-    'aws.arm64.c7g.4':  {cassandra:'c7gd.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c7g.medium',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'}, // lsblk: cassandra data0 nvme1n1 220.7G, bastion /mnt/capi_log nvme1n1 10G
+    'aws.arm64.c7g.4':  {cassandra:'c7gd.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] 220.7G', daemon: 'c7g.medium',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'}, // quick_lookup 23s, lsblk: cassandra data0 nvme1n1 220.7G, bastion /mnt/capi_log nvme1n1 10G
     'aws.arm64.c7g.8':  {cassandra:'c7gd.2xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c7g.large',   rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
     'aws.arm64.c7g.16': {cassandra:'c7gd.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 884.8G',        daemon: 'c7g.xlarge',  rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},
     'aws.arm64.c7g.32': {cassandra:'c7gd.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 1.7T',          daemon: 'c7g.2xlarge', rabbitmq: 'c7g.medium', prometheus: 'c7g.medium', bastion: 'c7g.large'},

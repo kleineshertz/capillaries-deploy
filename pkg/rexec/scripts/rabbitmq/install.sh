@@ -1,6 +1,18 @@
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-sudo DEBIAN_FRONTEND=noninteractive apt-get install curl gnupg -y
-sudo DEBIAN_FRONTEND=noninteractive apt-get install apt-transport-https
+
+# apt-get install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl gnupg 2>/dev/null
+if [ "$?" -ne "0" ]; then
+    echo gnugpg install error, exiting
+    exit $?
+fi
+
+# apt-get install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y apt-transport-https 2>/dev/null
+if [ "$?" -ne "0" ]; then
+    echo apt-transport-https install error, exiting
+    exit $?
+fi
 
 ## Team RabbitMQ's main signing key
 curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA" | sudo gpg --dearmor | sudo tee /usr/share/keyrings/com.rabbitmq.team.gpg > /dev/null
@@ -32,17 +44,57 @@ EOF
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 
-## Install Erlang packages
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y erlang-base \
-                        erlang-asn1 erlang-crypto erlang-eldap erlang-ftp erlang-inets \
-                        erlang-mnesia erlang-os-mon erlang-parsetools erlang-public-key \
-                        erlang-runtime-tools erlang-snmp erlang-ssl \
-                        erlang-syntax-tools erlang-tftp erlang-tools erlang-xmerl
+# See available packages:
 
-# As of Dec 2024, the only Erlang available for arm64 is 1:25.3.2.8+dfsg-1ubuntu4
-# RabbitMQ 3.12.14-1 is the best bet for arm64 then 
-# When Erlang 26 or 27 is available for arm64
-# (when "apt list a erlang-base" returns something better than "1:25.3.2.8+dfsg-1ubuntu4" for arm64),
-# try something newer, consult https://www.rabbitmq.com/docs/3.13/which-erlang or https://www.rabbitmq.com/docs/which-erlang
-export RABBITMQ_VER=3.12.14-1
-sudo DEBIAN_FRONTEND=noninteractive apt-get -y --fix-missing install rabbitmq-server=$RABBITMQ_VER
+# apt list -a erlang-base
+# As of Dec 2024:
+# erlang-base/noble,noble 1:27.2-1 amd64
+# erlang-base/noble,noble 1:27.1.3-1 amd64
+# erlang-base/noble,noble 1:27.1.2-1 amd64
+# erlang-base/noble,noble 1:26.2.5.6-1 amd64
+# erlang-base/noble,noble 1:26.2.5.5-1 amd64
+# erlang-base/noble,noble 1:26.2.5.4-1 amd64
+# erlang-base/noble,now 1:25.3.2.8+dfsg-1ubuntu4 arm64 [installed]
+
+# apt list -a rabbitmq-server
+# As of Dec 2024:
+# rabbitmq-server/noble,noble 4.0.5-1 all [upgradable from: 3.12.1-1ubuntu1]
+# rabbitmq-server/noble,noble 4.0.4-1 all
+# rabbitmq-server/noble,noble 4.0.3-1 all
+# rabbitmq-server/noble,noble 4.0.2-1 all
+# rabbitmq-server/noble,noble 4.0.1-1 all
+# rabbitmq-server/noble,noble 4.0.0-1 all
+# rabbitmq-server/noble,noble 3.13.7-1 all
+# rabbitmq-server/noble,noble 3.13.6-1 all
+# rabbitmq-server/noble,noble 3.13.5-1 all
+# rabbitmq-server/noble,noble 3.13.4-1 all
+# rabbitmq-server/noble,noble 3.12.14-1 all
+# rabbitmq-server/noble,now 3.12.1-1ubuntu1 all [installed,upgradable to: 4.0.5-1]
+
+# Compatibility chart: https://www.rabbitmq.com/docs/which-erlang and https://www.rabbitmq.com/docs/3.13/which-erlang
+
+if [ "$(uname -p)" == "x86_64" ]; then
+export ERLANG_VER=1:27.2-1
+export RABBITMQ_VER=4.0.5-1
+else
+export ERLANG_VER=1:25.3.2.8+dfsg-1ubuntu4
+export RABBITMQ_VER=3.12.1-1ubuntu1
+fi
+
+# apt-get install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y erlang-base=$ERLANG_VER \
+                        erlang-asn1=$ERLANG_VER erlang-crypto=$ERLANG_VER erlang-eldap=$ERLANG_VER erlang-ftp=$ERLANG_VER erlang-inets=$ERLANG_VER \
+                        erlang-mnesia=$ERLANG_VER erlang-os-mon=$ERLANG_VER erlang-parsetools=$ERLANG_VER erlang-public-key=$ERLANG_VER \
+                        erlang-runtime-tools=$ERLANG_VER erlang-snmp=$ERLANG_VER erlang-ssl=$ERLANG_VER \
+                        erlang-syntax-tools=$ERLANG_VER erlang-tftp=$ERLANG_VER erlang-tools=$ERLANG_VER erlang-xmerl 2>/dev/null
+if [ "$?" -ne "0" ]; then
+    echo erlang install error, exiting
+    exit $?
+fi
+
+# apt-get install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --fix-missing rabbitmq-server=$RABBITMQ_VER 2>/dev/null
+if [ "$?" -ne "0" ]; then
+    echo rabbitmq install error, exiting
+    exit $?
+fi

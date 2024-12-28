@@ -25,7 +25,9 @@ init_volume_attachment()
     # Make file system (it outputs to stderr, so ignore it)
     sudo mkfs.ext4 $deviceName 2>/dev/null
     if [ "$?" -ne "0" ]; then
-      echo Error $?, cannot make file system
+      echo Error $?, cannot make file system on device $deviceName for $volumeMountPath
+	  echo lsblk returns:
+	  lsblk
       return $?
     fi
   fi
