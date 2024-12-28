@@ -6,12 +6,21 @@
   local deployment_flavor_power = '{CAPIDEPLOY_DEPLOYMENT_FLAVOR_POWER}', // 1. aws or azure, 2. amd64 or arm64, 3. Flavor family, 4. Number of cores in Cassandra nodes. Daemon cores are 4 times less.
   local cassandra_total_nodes = std.parseInt('{CAPIDEPLOY_CASSANDRA_CLUSTER_SIZE}'), // Cassandra cluster size - 4,8,16
 
-  // You probably will not change anything below this line
+  // Versions
 
   // Prometheus and exporters versions
   local prometheus_node_exporter_version = '1.8.2', // See https://github.com/prometheus/node_exporter/releases
   local prometheus_server_version = '2.55.0', // See https://github.com/prometheus/prometheus/releases
   local jmx_exporter_version = '1.0.1', // See https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/
+  local cassandra_version = '50x', // See https://apache.jfrog.io/ui/native/cassandra-deb/dists/
+
+  // See scripts/rabbitmq/install.sh for details
+  local rabbitmq_erlang_version_amd64 = '1:27.2-1',
+  local rabbitmq_server_version_amd64 = '4.0.5-1',
+  local rabbitmq_erlang_version_arm64 = '1:25.3.2.8+dfsg-1ubuntu4',
+  local rabbitmq_server_version_arm64 = '3.12.1-1ubuntu1',
+
+  // You probably will not change anything below this line
 
   // max: daemon_cores*1.5 (which is the same as cassandra cores / 4 * 1.5)
   local DEFAULT_DAEMON_THREAD_POOL_SIZE = std.toString(std.round(std.parseInt(std.split(deployment_flavor_power,".")[3]) / 4 * 1.5)), 
@@ -76,7 +85,7 @@
  
   local instance_flavor = getFromMap({
     'aws.amd64.c5a.4':  {cassandra:'c5ad.xlarge',   cass_nvme_regex:'nvme[0-9]n[0-9] 139.7G', daemon: 'c6a.large',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' }, // quick_lookup 23s, bastion lsblk: "xvdf 202:80 0 10G  0 disk /mnt/capi_log", cass lsblk: "nvme1n1 259:1 0 139.7G 0 disk"
-    'aws.amd64.c5a.8':  {cassandra:'c5ad.2xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.large',   rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
+    'aws.amd64.c5a.8':  {cassandra:'c5ad.2xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 279.4G', daemon: 'c6a.large',   rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' }, // quick_lookup 23s, cass lsblk: "nvme1n1 259:0 0 279.4G  0 disk /data0"
     'aws.amd64.c5a.16': {cassandra:'c5ad.4xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]G', daemon: 'c6a.xlarge',  rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.32': {cassandra:'c5ad.8xlarge',  cass_nvme_regex:'nvme[0-9]n[0-9] 558.8G',        daemon: 'c6a.2xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
     'aws.amd64.c5a.64': {cassandra:'c5ad.16xlarge', cass_nvme_regex:'nvme[0-9]n[0-9] [0-9]+.[0-9]T', daemon: 'c6a.4xlarge', rabbitmq: 't2.micro',   prometheus: 't2.micro',   bastion: 't2.micro' },
@@ -366,6 +375,10 @@
       subnet_name: $.network.private_subnet.name,
       service: {
         env: {
+          RABBITMQ_ERLANG_VERSION_AMD64: rabbitmq_erlang_version_amd64,
+          RABBITMQ_SERVER_VERSION_AMD64: rabbitmq_server_version_amd64,
+          RABBITMQ_ERLANG_VERSION_ARM64: rabbitmq_erlang_version_arm64,
+          RABBITMQ_SERVER_VERSION_ARM64: rabbitmq_server_version_arm64,
           INTERNAL_BASTION_IP: internal_bastion_ip,
           PROMETHEUS_NODE_EXPORTER_VERSION: prometheus_node_exporter_version,
           RABBITMQ_ADMIN_NAME: '{CAPIDEPLOY_RABBITMQ_ADMIN_NAME}',
@@ -449,6 +462,7 @@
           CASSANDRA_SEEDS: cassandra_seeds,
           INITIAL_TOKEN: e.token,
           PROMETHEUS_NODE_EXPORTER_VERSION: prometheus_node_exporter_version,
+          CASSANDRA_VERSION: cassandra_version,
           JMX_EXPORTER_VERSION: jmx_exporter_version,
           NVME_REGEX: instance_flavor.cass_nvme_regex,
         },

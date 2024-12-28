@@ -1,9 +1,14 @@
+if [ "$CASSANDRA_VERSION" = "" ]; then
+  echo Error, missing: CASSANDRA_VERSION=50x
+  exit 1
+fi
+
 if [ "$JMX_EXPORTER_VERSION" = "" ]; then
   echo Error, missing: JMX_EXPORTER_VERSION=1.0.1
   exit 1
 fi
 
-echo "deb https://debian.cassandra.apache.org 50x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
+echo "deb https://debian.cassandra.apache.org $CASSANDRA_VERSION main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
 # apt-key is deprecated. but still working, just silence it
 curl -s https://downloads.apache.org/cassandra/KEYS | sudo apt-key add - 2>/dev/null
 

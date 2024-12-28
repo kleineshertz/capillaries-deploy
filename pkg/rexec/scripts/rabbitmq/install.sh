@@ -1,3 +1,20 @@
+if [ "$RABBITMQ_ERLANG_VERSION_AMD64" = "" ]; then
+  echo Error, missing: RABBITMQ_ERLANG_VERSION_AMD64=...
+  exit 1
+fi
+if [ "$RABBITMQ_SERVER_VERSION_AMD64" = "" ]; then
+  echo Error, missing: RABBITMQ_SERVER_VERSION_AMD64=...
+  exit 1
+fi
+if [ "$RABBITMQ_ERLANG_VERSION_ARM64" = "" ]; then
+  echo Error, missing: RABBITMQ_ERLANG_VERSION_ARM64=...
+  exit 1
+fi
+if [ "$RABBITMQ_SERVER_VERSION_ARM64" = "" ]; then
+  echo Error, missing: RABBITMQ_SERVER_VERSION_ARM64=...
+  exit 1
+fi
+
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 
 # apt-get install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
@@ -74,11 +91,11 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 # Compatibility chart: https://www.rabbitmq.com/docs/which-erlang and https://www.rabbitmq.com/docs/3.13/which-erlang
 
 if [ "$(uname -p)" == "x86_64" ]; then
-export ERLANG_VER=1:27.2-1
-export RABBITMQ_VER=4.0.5-1
+export ERLANG_VER=$RABBITMQ_ERLANG_VERSION_AMD64
+export RABBITMQ_VER=$RABBITMQ_SERVER_VERSION_AMD64
 else
-export ERLANG_VER=1:25.3.2.8+dfsg-1ubuntu4
-export RABBITMQ_VER=3.12.1-1ubuntu1
+export ERLANG_VER=$RABBITMQ_ERLANG_VERSION_ARM64
+export RABBITMQ_VER=$RABBITMQ_SERVER_VERSION_ARM64
 fi
 
 # apt-get install has a habit to write "Running kernel seems to be up-to-date." to stderr. Ignore it and rely on the exit code
