@@ -136,6 +136,9 @@ func internalCreate(p *AwsDeployProvider, lb *l.LogBuilder, iNickname string, in
 	}
 
 	if p.DeployCtx.Project.Instances[iNickname].AssociatedInstanceProfile != "" {
+		// Associate "RoleAccessCapillariesTestbucket" instance profile
+		// (see readme, this instance profile wraps the actual role RoleAccessCapillariesTestbucket)
+		// with this instance so the instance can access S3 bucket
 		err = cldaws.AssociateInstanceProfile(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, instanceId, p.DeployCtx.Project.Instances[iNickname].AssociatedInstanceProfile)
 		if err != nil {
 			return err

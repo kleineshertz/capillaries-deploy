@@ -1,7 +1,6 @@
 package rexec
 
 import (
-	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -26,6 +25,28 @@ func signerFromPem(pemBytes []byte) (ssh.Signer, error) {
 
 	// NOTE handle key encrypted with password here if needed, x509.DecryptPEMBlock is obsolete
 
+	// if x509.IsEncryptedPEMBlock(pemBlock) {
+	// 	// decrypt PEM
+	// 	pemBlock.Bytes, err = x509.DecryptPEMBlock(pemBlock, []byte(password))
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("cannot decrypt PEM block %s", err.Error())
+	// 	}
+
+	// 	// get RSA, EC or DSA key
+	// 	key, err := parsePemBlock(pemBlock)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	// 	// generate signer instance from key
+	// 	signer, err := ssh.NewSignerFromKey(key)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("cannot create signer from encrypted key %s", err.Error())
+	// 	}
+
+	// 	return signer, nil
+	// }
+
 	// generate signer instance from plain key
 	signer, err := ssh.ParsePrivateKey(pemBytes)
 	if err != nil {
@@ -35,33 +56,33 @@ func signerFromPem(pemBytes []byte) (ssh.Signer, error) {
 	return signer, nil
 }
 
-func parsePemBlock(block *pem.Block) (any, error) {
-	switch block.Type {
-	case "RSA PRIVATE KEY":
-		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse PKCS private key %s", err.Error())
-		} else {
-			return key, nil
-		}
-	case "EC PRIVATE KEY":
-		key, err := x509.ParseECPrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse EC private key %s", err.Error())
-		} else {
-			return key, nil
-		}
-	case "DSA PRIVATE KEY":
-		key, err := ssh.ParseDSAPrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse DSA private key %s", err.Error())
-		} else {
-			return key, nil
-		}
-	default:
-		return nil, fmt.Errorf("cannot parse private key, unsupported key type %s", block.Type)
-	}
-}
+// func parsePemBlock(block *pem.Block) (any, error) {
+// 	switch block.Type {
+// 	case "RSA PRIVATE KEY":
+// 		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("cannot parse PKCS private key %s", err.Error())
+// 		} else {
+// 			return key, nil
+// 		}
+// 	case "EC PRIVATE KEY":
+// 		key, err := x509.ParseECPrivateKey(block.Bytes)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("cannot parse EC private key %s", err.Error())
+// 		} else {
+// 			return key, nil
+// 		}
+// 	case "DSA PRIVATE KEY":
+// 		key, err := ssh.ParseDSAPrivateKey(block.Bytes)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("cannot parse DSA private key %s", err.Error())
+// 		} else {
+// 			return key, nil
+// 		}
+// 	default:
+// 		return nil, fmt.Errorf("cannot parse private key, unsupported key type %s", block.Type)
+// 	}
+// }
 
 func NewSshClientConfig(user string, privateKeyOrPath string) (*ssh.ClientConfig, error) {
 	reBegin := regexp.MustCompile(`-----BEGIN [ a-zA-Z0-9]+ KEY-----`)
@@ -70,6 +91,8 @@ func NewSshClientConfig(user string, privateKeyOrPath string) (*ssh.ClientConfig
 	strEnd := reEnd.FindString(privateKeyOrPath)
 	var signer ssh.Signer
 	if strBegin != "" && strEnd != "" {
+		// This is an embedded private key. The only reason we support this scenario is because we want less hassle in the SAAS
+		// (so we can just provide the key in the variable instead of managing a key file)
 		pemWithoutCrlf := strings.NewReplacer("\n", "", "\r", "").Replace(privateKeyOrPath)
 		pemWithTwoCrlfs := strings.ReplaceAll(strings.ReplaceAll(pemWithoutCrlf, strBegin, strBegin+"\n"), strEnd, "\n"+strEnd)
 		var err error

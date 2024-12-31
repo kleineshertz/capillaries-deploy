@@ -165,7 +165,7 @@ type InstanceDef struct {
 	SubnetName                string                `json:"subnet_name"`
 	Volumes                   map[string]*VolumeDef `json:"volumes,omitempty"`
 	Service                   ServiceDef            `json:"service"`
-	AssociatedInstanceProfile string                `json:"associated_instance_profile"`
+	AssociatedInstanceProfile string                `json:"associated_instance_profile"` // CAPIDEPLOY_AWS_INSTANCE_PROFILE_WITH_S3_ACCESS=RoleAccessCapillariesTestbucket
 	//SubnetType            string                `json:"subnet_type"`
 	//Id                    string                `json:"id"`
 	//SnapshotImageId       string                `json:"snapshot_image_id"`

@@ -9,7 +9,7 @@ sudo sed -i "s/nameserver[ ]*[0-9.]*/nameserver 8.8.8.8/" /etc/resolv.conf
 
 sudo resolvectl flush-caches
 
-sudo DEBIAN_FRONTEND=noninteractive apt-get -y update
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 
 # Utilities for checking cloud performance, feel free to comment this out
 # sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iperf

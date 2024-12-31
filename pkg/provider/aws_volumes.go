@@ -35,6 +35,7 @@ func (p *AwsDeployProvider) CreateVolume(iNickname string, volNickname string) (
 }
 
 // AWS hell https://stackoverflow.com/questions/70205661/correctly-specifying-device-name-for-ebs-volume-while-attaching-to-an-ec2-instan
+// This function returns /dev/sdf for the first attached vol, /dev/sdg for the second one and so on
 func volNicknameToAwsSuggestedDeviceName(volumes map[string]*prj.VolumeDef, volNickname string) string {
 	// Sorted list of vol nicknames
 	volNicknames := make([]string, len(volumes))
@@ -54,10 +55,10 @@ func volNicknameToAwsSuggestedDeviceName(volumes map[string]*prj.VolumeDef, volN
 	return "invalid-device-for-vol-" + volNickname
 }
 
-// Not used anymore, hopefully
-// func awsFinalDeviceNameOld(suggestedDeviceName string) string {
-// 	return strings.ReplaceAll(suggestedDeviceName, "/dev/sd", "/dev/xvd")
-// }
+// Still used in micros
+func awsFinalDeviceNameOld(suggestedDeviceName string) string {
+	return strings.ReplaceAll(suggestedDeviceName, "/dev/sd", "/dev/xvd")
+}
 
 func awsFinalDeviceNameNitro(suggestedDeviceName string) string {
 	// See what lsblk shows for your case.
@@ -101,20 +102,32 @@ func (p *AwsDeployProvider) AttachVolume(iNickname string, volNickname string) (
 			return lb.Complete(err)
 		}
 
+		// CLI/API uses /dev/sdf, /dev/sdg etc volume device naming. No xvd/nvme naming magic here.
 		_, err = cldaws.AttachVolume(p.DeployCtx.Aws.Ec2Client, p.DeployCtx.GoCtx, lb, foundVolIdByName, foundInstanceIdByName, suggestedDevice, p.DeployCtx.Project.Timeouts.AttachVolume)
 		if err != nil {
 			return lb.Complete(err)
 		}
 	}
 
-	// Mount
+	// Mount: xvd/nvme naming magic required, sdf/sdg/etc are not accepted here
+
+	// Older vol device naming vs Nitro
+	var finalDeviceNameToMount string
+	if strings.HasPrefix(p.DeployCtx.Project.Instances[iNickname].FlavorName, "t2.") ||
+		strings.HasPrefix(p.DeployCtx.Project.Instances[iNickname].FlavorName, "m4.") {
+		// /dev/sdf->/dev/xvdf etc
+		finalDeviceNameToMount = awsFinalDeviceNameOld(suggestedDevice)
+	} else {
+		// /dev/sdf->/dev/nvme1n1 etc
+		finalDeviceNameToMount = awsFinalDeviceNameNitro(suggestedDevice)
+	}
 
 	deviceBlockId, er := rexec.ExecSshAndReturnLastLine(
 		p.DeployCtx.Project.SshConfig,
 		p.DeployCtx.Project.Instances[iNickname].BestIpAddress(),
 		fmt.Sprintf("%s\ninit_volume_attachment %s %s %d '%s'",
 			cldaws.InitVolumeAttachmentFunc,
-			awsFinalDeviceNameNitro(suggestedDevice), // AWS final device here
+			finalDeviceNameToMount,
 			volDef.MountPoint,
 			volDef.Permissions,
 			volDef.Owner))
