@@ -127,9 +127,11 @@ sudo chown cassandra /etc/cassandra/jmx_exporter.yml
 echo 'JVM_OPTS="$JVM_OPTS -javaagent:/usr/share/cassandra/lib/jmx_prometheus_javaagent-'$JMX_EXPORTER_VERSION'.jar=7070:/etc/cassandra/jmx_exporter.yml"' | sudo tee -a /etc/cassandra/cassandra-env.sh
 
 # For now stop it. We will reconfigure it anywways
+echo Stopping Cassandra after installation...
 sudo systemctl stop cassandra
 
 # Cassandra 50 has a habit to make it drwxr-x---. Make it drwxr-xr-x
+echo Changing /var/log/cassandra permissions...
 sudo chmod 755 /var/log/cassandra
 
 # RAM disk size in GB

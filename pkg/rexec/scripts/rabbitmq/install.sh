@@ -64,6 +64,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 # See available packages:
 
 # apt list -a erlang-base
+
 # As of Dec 2024:
 # erlang-base/noble,noble 1:27.2-1 amd64
 # erlang-base/noble,noble 1:27.1.3-1 amd64
@@ -73,7 +74,49 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 # erlang-base/noble,noble 1:26.2.5.4-1 amd64
 # erlang-base/noble,now 1:25.3.2.8+dfsg-1ubuntu4 arm64 [installed]
 
+# As of April 2025:
+# erlang-base/noble,noble 1:27.3.1-1 amd64
+# erlang-base/noble,noble 1:27.3-1 amd64
+# erlang-base/noble,noble 1:27.2.4-1 amd64
+# erlang-base/noble,noble 1:27.2.3-1 amd64
+# erlang-base/noble,noble 1:27.2.2-1 amd64
+# erlang-base/noble,noble 1:27.2.1-1 amd64
+# erlang-base/noble,noble 1:27.2-1 amd64
+# erlang-base/noble,noble 1:27.1.3-1 amd64
+# erlang-base/noble,noble 1:27.1.2-1 amd64
+# erlang-base/noble,noble 1:26.2.5.10-1 amd64
+# erlang-base/noble,noble 1:26.2.5.9-1 amd64
+# erlang-base/noble,noble 1:26.2.5.8-1 amd64
+# erlang-base/noble,noble 1:26.2.5.7-1 amd64
+# erlang-base/noble,noble 1:26.2.5.6-1 amd64
+# erlang-base/noble,noble 1:26.2.5.5-1 amd64
+# erlang-base/noble,noble 1:26.2.5.4-1 amd64
+# erlang-base/noble-updates,noble-security,now 1:25.3.2.8+dfsg-1ubuntu4.1 arm64 [installed]
+# erlang-base/noble 1:25.3.2.8+dfsg-1ubuntu4 arm64
+
+# As of April 2025
+# erlang-base/noble,noble 1:27.3.2-1 amd64
+# erlang-base/noble,noble 1:27.3.1-1 amd64
+# erlang-base/noble,noble 1:27.3-1 amd64
+# erlang-base/noble,noble 1:27.2.4-1 amd64
+# erlang-base/noble,noble 1:27.2.3-1 amd64
+# erlang-base/noble,noble 1:27.2.2-1 amd64
+# erlang-base/noble,noble 1:27.2.1-1 amd64
+# erlang-base/noble,noble 1:27.2-1 amd64
+# erlang-base/noble,noble 1:27.1.3-1 amd64
+# erlang-base/noble,noble 1:27.1.2-1 amd64
+# erlang-base/noble,noble 1:26.2.5.10-1 amd64
+# erlang-base/noble,noble 1:26.2.5.9-1 amd64
+# erlang-base/noble,noble 1:26.2.5.8-1 amd64
+# erlang-base/noble,noble 1:26.2.5.7-1 amd64
+# erlang-base/noble,noble 1:26.2.5.6-1 amd64
+# erlang-base/noble,noble 1:26.2.5.5-1 amd64
+# erlang-base/noble,noble 1:26.2.5.4-1 amd64
+# erlang-base/noble-updates,noble-security 1:25.3.2.8+dfsg-1ubuntu4.2 arm64 [upgradable from: 1:25.3.2.8+dfsg-1ubuntu4]
+# erlang-base/noble,now 1:25.3.2.8+dfsg-1ubuntu4 arm64 [installed,upgradable to: 1:25.3.2.8+dfsg-1ubuntu4.2]
+
 # apt list -a rabbitmq-server
+
 # As of Dec 2024:
 # rabbitmq-server/noble,noble 4.0.5-1 all [upgradable from: 3.12.1-1ubuntu1]
 # rabbitmq-server/noble,noble 4.0.4-1 all
@@ -87,6 +130,23 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 # rabbitmq-server/noble,noble 3.13.4-1 all
 # rabbitmq-server/noble,noble 3.12.14-1 all
 # rabbitmq-server/noble,now 3.12.1-1ubuntu1 all [installed,upgradable to: 4.0.5-1]
+
+# As of April 2025:
+# rabbitmq-server/noble,noble 4.0.7-1 all [upgradable from: 3.12.1-1ubuntu1]
+# rabbitmq-server/noble,noble 4.0.6-1 all
+# rabbitmq-server/noble,noble 4.0.5-1 all
+# rabbitmq-server/noble,noble 4.0.4-1 all
+# rabbitmq-server/noble,noble 4.0.3-1 all
+# rabbitmq-server/noble,noble 4.0.2-1 all
+# rabbitmq-server/noble,noble 4.0.1-1 all
+# rabbitmq-server/noble,noble 4.0.0-1 all
+# rabbitmq-server/noble,noble 3.13.7-1 all
+# rabbitmq-server/noble,noble 3.13.6-1 all
+# rabbitmq-server/noble,noble 3.13.5-1 all
+# rabbitmq-server/noble,noble 3.13.4-1 all
+# rabbitmq-server/noble,noble 3.12.14-1 all
+# rabbitmq-server/noble-updates,noble-security 3.12.1-1ubuntu1.2 all
+# rabbitmq-server/noble,now 3.12.1-1ubuntu1 all [installed,upgradable to: 4.0.7-1]
 
 # Compatibility chart: https://www.rabbitmq.com/docs/which-erlang and https://www.rabbitmq.com/docs/3.13/which-erlang
 
@@ -103,7 +163,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y erlang-base=$ERLANG_VER \
                         erlang-asn1=$ERLANG_VER erlang-crypto=$ERLANG_VER erlang-eldap=$ERLANG_VER erlang-ftp=$ERLANG_VER erlang-inets=$ERLANG_VER \
                         erlang-mnesia=$ERLANG_VER erlang-os-mon=$ERLANG_VER erlang-parsetools=$ERLANG_VER erlang-public-key=$ERLANG_VER \
                         erlang-runtime-tools=$ERLANG_VER erlang-snmp=$ERLANG_VER erlang-ssl=$ERLANG_VER \
-                        erlang-syntax-tools=$ERLANG_VER erlang-tftp=$ERLANG_VER erlang-tools=$ERLANG_VER erlang-xmerl 2>/dev/null
+                        erlang-syntax-tools=$ERLANG_VER erlang-tftp=$ERLANG_VER erlang-tools=$ERLANG_VER erlang-xmerl=$ERLANG_VER 2>/dev/null
 if [ "$?" -ne "0" ]; then
     echo erlang install error, exiting
     exit $?

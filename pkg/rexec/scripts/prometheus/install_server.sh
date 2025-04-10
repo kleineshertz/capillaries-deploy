@@ -42,12 +42,14 @@ sudo chown prometheus:prometheus /usr/local/bin/prometheus
 sudo chown prometheus:prometheus /usr/local/bin/promtool
 
 # Copy the consoles and console_libraries directories to /etc/prometheus.
-sudo cp -r $PROMETHEUS_DL_FILE/consoles /etc/prometheus
-sudo cp -r $PROMETHEUS_DL_FILE/console_libraries /etc/prometheus
+# Not in 3.2.1
+#sudo cp -r $PROMETHEUS_DL_FILE/consoles /etc/prometheus
+#sudo cp -r $PROMETHEUS_DL_FILE/console_libraries /etc/prometheus
 
 # Set the user and group ownership on the directories to the prometheus user. Using the -R flag will ensure that ownership is set on the files inside the directory as well.
-sudo chown -R prometheus:prometheus /etc/prometheus/consoles
-sudo chown -R prometheus:prometheus /etc/prometheus/console_libraries
+# Not in 3.2.1
+#sudo chown -R prometheus:prometheus /etc/prometheus/consoles
+#sudo chown -R prometheus:prometheus /etc/prometheus/console_libraries
 
 # Lastly, remove the leftover files from your home directory as they are no longer needed.
 rm -rf $PROMETHEUS_DL_FILE.tar.gz $PROMETHEUS_DL_FILE
