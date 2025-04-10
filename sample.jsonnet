@@ -9,15 +9,15 @@
   // Versions
 
   // Prometheus and exporters versions
-  local prometheus_node_exporter_version = '1.8.2', // See https://github.com/prometheus/node_exporter/releases
-  local prometheus_server_version = '2.55.0', // See https://github.com/prometheus/prometheus/releases
+  local prometheus_node_exporter_version = '1.9.1', // See https://github.com/prometheus/node_exporter/releases
+  local prometheus_server_version = '3.2.1', // See https://github.com/prometheus/prometheus/releases
   local jmx_exporter_version = '1.0.1', // See https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/
   local cassandra_version = '50x', // See https://apache.jfrog.io/ui/native/cassandra-deb/dists/
 
   // See scripts/rabbitmq/install.sh for details
   local rabbitmq_erlang_version_amd64 = '1:27.2-1',
   local rabbitmq_server_version_amd64 = '4.0.5-1',
-  local rabbitmq_erlang_version_arm64 = '1:25.3.2.8+dfsg-1ubuntu4',
+  local rabbitmq_erlang_version_arm64 = '1:25.3.2.8+dfsg-1ubuntu4', // Watch RabbitMQ team changing this sometimes as of 2024-2025: 1ubuntu4, 1ubuntu4.1, 1ubuntu4.2
   local rabbitmq_server_version_arm64 = '3.12.1-1ubuntu1',
 
   // You probably will not change anything below this line
